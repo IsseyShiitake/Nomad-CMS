@@ -1,0 +1,991 @@
+/* Split-screen login — CONCEPT A "LUMEN".
+   Client | Developer halves over the ambient background. Hover/focus
+   biases the flex split; clicking (or Enter/Space) expands a half to full
+   screen and fades its card in.
+
+   ── What Lumen changes ───────────────────────────────────────────────
+   The interaction model, the seam geometry and every class name are
+   untouched — the clip-path math below is load-bearing and was tuned
+   against real measurements, so it is preserved verbatim. What changes is
+   the surface:
+
+   • PORCELAIN HALVES. The blush/violet washes at 0.38 alpha were the same
+     value as the field behind them, so the split read as a suggestion. The
+     halves are now two solid, near-opaque porcelains — warm for Client,
+     cool for Developer — separated by a real step in value. The diagonal
+     now reads as an edge between two materials.
+
+   • THE SEAM IS A LIGHT LEAK. A crisp 1px line, with a soft glow painted
+     into each half's tint gradient hugging the seam. Both glows live on
+     ::before, which the half's own clip-path trims to the diagonal — so
+     the light follows the seam exactly, including through the hover bias,
+     with no extra element and no filter.
+
+   • HOVER ANSWERS. A veil brightens the half under the pointer instead of
+     only widening it, so the affordance is visible before the flex move
+     finishes.
+
+   • INK, NOT HAZE. Hero labels are full-opacity --lm-ink and rise through
+     a line mask on arrival.
+
+   • ONE GLASS OBJECT LEFT. The card is solid porcelain with a rim light;
+     the floating controls pill keeps the blur. Glass now means "floating
+     chrome", not "every surface".
+
+   Scoped overrides for the shared components this screen uses (.btn,
+   .auth-card, .login-card, inputs, .lang-toggle, .theme-toggle,
+   .error-banner) all carry a .split-login ancestor, so they cannot leak
+   into the rest of the app once this lazy chunk's CSS is injected. */
+
+.split-login {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--lm-font-ui);
+  color: var(--lm-ink);
+}
+
+.split-login__halves {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* --- Halves -------------------------------------------------------- */
+
+.split-login__half {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  transition: flex-grow calc(0.6s * var(--speed)) var(--lm-ease-inout),
+    flex-basis calc(0.6s * var(--speed)) var(--lm-ease-inout),
+    padding calc(0.6s * var(--speed)) var(--lm-ease-inout),
+    margin calc(0.6s * var(--speed)) var(--lm-ease-inout),
+    clip-path calc(0.6s * var(--speed)) var(--lm-ease-inout);
+}
+
+.split-login__half:focus-visible {
+  outline: 2px solid var(--lm-iris);
+  outline-offset: -3px;
+}
+
+/* Expanded half takes the whole screen; the sibling collapses away. */
+.split-login__half--expanded {
+  flex: 1 0 100%;
+  cursor: default;
+}
+
+.split-login__half--collapsed {
+  flex-grow: 0;
+  flex-shrink: 1;
+  flex-basis: 0;
+  cursor: default;
+}
+
+/* Hover / keyboard-focus bias (class set on the container). */
+.split-login--hover-client .split-login__half--client,
+.split-login--hover-developer .split-login__half--developer {
+  flex-grow: 2;
+}
+
+/* --- Porcelain tints + seam glow ------------------------------------ */
+
+/* The tints and the seam glow are held in custom properties so the narrow
+   layout can re-aim the glow (the seam rotates 90° when the halves stack)
+   without re-declaring a single gradient. */
+.split-login {
+  --lm-tint-client: linear-gradient(158deg, #fff6ef 0%, #fdeae6 44%, #f6dde2 100%);
+  --lm-tint-developer: linear-gradient(202deg, #f2eefb 0%, #e7e2f7 46%, #dcd8ee 100%);
+  --lm-glow-client: rgba(255, 255, 255, 0.5);
+  --lm-glow-developer: rgba(255, 255, 255, 0.5);
+  --lm-seam-glow-size: 8rem;
+}
+
+:root[data-theme='dark'] .split-login {
+  --lm-tint-client: linear-gradient(158deg, #221a26 0%, #1d1622 46%, #241a24 100%);
+  --lm-tint-developer: linear-gradient(202deg, #181a30 0%, #14162a 46%, #121c2c 100%);
+  /* On near-black, a wide low-alpha warm wash reads as mud rather than as
+     light. Dark keeps the leak narrow and hot so it reads as ember spilling
+     from the seam; the cool side mirrors it at the same width. */
+  --lm-glow-client: rgba(255, 150, 110, 0.22);
+  --lm-glow-developer: rgba(150, 168, 255, 0.18);
+  --lm-seam-glow-size: 3rem;
+}
+
+.split-login__half::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Client: warm porcelain. The first layer is the seam glow — painted from
+   the half's seam-side edge, which the clip-path then trims to the
+   diagonal. Kept narrow: wider, and it stops reading as light leaking from
+   the seam and starts reading as a band across the half. */
+.split-login__half--client {
+  --lm-glow-dir: to left;
+}
+
+.split-login__half--client::before {
+  background:
+    linear-gradient(
+      var(--lm-glow-dir),
+      var(--lm-glow-client) 0%,
+      transparent var(--lm-seam-glow-size)
+    ),
+    var(--lm-tint-client);
+}
+
+/* Developer: cool porcelain, glowing from its own seam-side edge — the same
+   seam, the other side of it. */
+.split-login__half--developer {
+  --lm-glow-dir: to right;
+}
+
+.split-login__half--developer::before {
+  background:
+    linear-gradient(
+      var(--lm-glow-dir),
+      var(--lm-glow-developer) 0%,
+      transparent var(--lm-seam-glow-size)
+    ),
+    var(--lm-tint-developer);
+}
+
+/* --- Hover veil ------------------------------------------------------ */
+
+/* Brightens the half under the pointer. A plain opacity transition rather
+   than a filter: a filter on a half-viewport element would re-rasterize
+   the whole thing every frame of the hover bias. Sits above the tint, below
+   the hero and the panel. */
+.split-login__veil {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity calc(0.45s * var(--speed)) var(--lm-ease-inout);
+}
+
+.split-login__half--client .split-login__veil {
+  background: radial-gradient(
+    90% 70% at 50% 42%,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(255, 255, 255, 0) 72%
+  );
+}
+
+.split-login__half--developer .split-login__veil {
+  background: radial-gradient(
+    90% 70% at 50% 42%,
+    rgba(255, 255, 255, 0.5) 0%,
+    rgba(255, 255, 255, 0) 72%
+  );
+}
+
+:root[data-theme='dark'] .split-login__half--client .split-login__veil {
+  background: radial-gradient(
+    90% 70% at 50% 42%,
+    rgba(255, 176, 128, 0.14) 0%,
+    rgba(255, 176, 128, 0) 72%
+  );
+}
+
+:root[data-theme='dark'] .split-login__half--developer .split-login__veil {
+  background: radial-gradient(
+    90% 70% at 50% 42%,
+    rgba(150, 168, 255, 0.16) 0%,
+    rgba(150, 168, 255, 0) 72%
+  );
+}
+
+.split-login--hover-client .split-login__half--client .split-login__veil,
+.split-login--hover-developer .split-login__half--developer .split-login__veil {
+  opacity: 1;
+}
+
+/* An expanded half is already the whole screen — the veil would just wash
+   out the sign-in card. */
+.split-login__half--expanded .split-login__veil,
+.split-login__half--collapsed .split-login__veil {
+  opacity: 0;
+}
+
+/* --- Diagonal seam between the halves ------------------------------- */
+
+/* Exactly ONE boundary — the vertical color seam and the old skewed
+   glass strip are both gone; the two tints now meet along a single
+   diagonal that leans ╱ (top toward the right, bottom toward the left,
+   opposite of the removed strip), with a 1px light line riding on it.
+
+   Geometry (desktop, flex row, at rest): each half grows to
+   (100% + 4.5rem) / 2 wide because the client carries
+   `margin-right: -4.5rem` — the two boxes overlap across a 4.5rem band
+   centred on the old midline. Equal padding (2.25rem) puts each hero
+   back at the center of its TRUE visual half. The boxes are clipped to
+   complementary polygons sharing the one line
+   (boundary + 2.25rem at the top → boundary − 2.25rem at the bottom):
+   no overlap band, no gap, no second edge at any y. Clip-path also
+   clips hit-testing, so paint and clicks agree on the seam. The clips
+   are anchored to the flex boundary, so hover-bias slides the whole
+   seam with the halves; expanded/collapsed below opens it away. */
+.split-login__half--client {
+  margin-right: -4.5rem;
+  padding-right: 2.25rem;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 4.5rem) 100%, 0 100%);
+}
+
+.split-login__half--developer {
+  padding-left: 2.25rem;
+  clip-path: polygon(4.5rem 0, 100% 0, 100% 100%, 0 100%);
+}
+
+/* The seam line itself: a 1px sliver clipped along the exact same
+   diagonal. Lumen makes it luminous rather than translucent — it is the
+   brightest thing on the screen at rest, which is what makes the split
+   read as deliberate. */
+.split-login__half--developer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(4.5rem 0, calc(4.5rem + 1px) 0, 1px 100%, 0 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0.95) 38%,
+    rgba(255, 255, 255, 0.95) 62%,
+    rgba(255, 255, 255, 0.3) 100%
+  );
+  pointer-events: none;
+  z-index: 3;
+  transition: opacity calc(0.4s * var(--speed)) var(--lm-ease-out),
+    clip-path calc(0.6s * var(--speed)) var(--lm-ease-inout);
+}
+
+:root[data-theme='dark'] .split-login__half--developer::after {
+  background: linear-gradient(
+    180deg,
+    rgba(169, 155, 255, 0.2) 0%,
+    rgba(206, 198, 255, 0.72) 38%,
+    rgba(206, 198, 255, 0.72) 62%,
+    rgba(169, 155, 255, 0.16) 100%
+  );
+}
+
+/* Expanded (full screen has no divider): open both half clips to
+   rectangles — same vertex count, so the seam visibly straightens as
+   the half expands — fade the hairline, and reset the seam geometry so
+   the sign-in card centers in the true viewport. Double-class keeps
+   every reset above media-query overrides regardless of order. */
+.split-login__half.split-login__half--expanded,
+.split-login__half.split-login__half--collapsed {
+  margin: 0;
+  padding: 0;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+}
+
+.split-login__half--developer.split-login__half--expanded::after,
+.split-login__half--developer.split-login__half--collapsed::after {
+  opacity: 0;
+  clip-path: polygon(0 0, 1px 0, 1px 100%, 0 100%);
+}
+
+/* --- Hero (giant label + kicker) ------------------------------------ */
+
+.split-login__hero {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.1rem;
+  padding: 0 1.5rem;
+  text-align: center;
+  transition: opacity calc(0.35s * var(--speed)) var(--lm-ease-out);
+}
+
+.split-login__half--expanded .split-login__hero {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* A small iris diamond above the label — the only saturated mark on the
+   screen at rest, so the eye lands on the choice before the type. */
+.split-login__hero::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin-bottom: 0.35rem;
+  background: var(--lm-iris);
+  transform: rotate(45deg);
+  opacity: 0;
+  animation: lm-hero-mark calc(900ms * var(--speed)) var(--lm-ease-out)
+    calc(260ms * var(--speed)) forwards;
+}
+
+@keyframes lm-hero-mark {
+  from {
+    opacity: 0;
+    transform: rotate(45deg) scale(0.4);
+  }
+  to {
+    opacity: 0.85;
+    transform: rotate(45deg) scale(1);
+  }
+}
+
+.split-login__label {
+  font-family: var(--lm-font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-variation-settings: 'SOFT' 18, 'WONK' 1;
+  font-size: clamp(2.6rem, 6.2vw, 4.75rem);
+  line-height: 1.02;
+  letter-spacing: -0.008em;
+  color: var(--lm-ink);
+  white-space: nowrap;
+  /* Line-mask rise: the word climbs into a window instead of fading in
+     where it stands. The open inset is negative on three sides so the
+     italic overhang and descenders are never clipped. */
+  opacity: 0;
+  animation: lm-mask-rise calc(1000ms * var(--speed)) var(--lm-ease-out)
+    calc(120ms * var(--speed)) forwards;
+}
+
+/* A short iris rule between the label and the kicker. Side rules either
+   side of the kicker were tried first and abandoned: the taglines wrap to
+   two or three lines at half width, and rules flanking a wrapped block sit
+   beside whichever line happens to be in the middle, which reads as a
+   layout fault. One rule above, centred, survives any wrap. */
+.split-login__label::after {
+  content: '';
+  display: block;
+  width: 30px;
+  height: 1px;
+  margin: 0.95rem auto 0;
+  background: var(--lm-iris);
+  opacity: 0.55;
+}
+
+.split-login__kicker {
+  font-family: var(--lm-font-ui);
+  font-size: var(--lm-step--2);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  line-height: 1.9;
+  color: var(--lm-ink-muted);
+  max-width: 30ch;
+  text-align: center;
+  opacity: 0;
+  animation: lm-mask-rise calc(1000ms * var(--speed)) var(--lm-ease-out)
+    calc(260ms * var(--speed)) forwards;
+}
+
+@keyframes lm-mask-rise {
+  from {
+    opacity: 0;
+    clip-path: inset(-30% -14% 104% -14%);
+    transform: translateY(0.34em);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(-30% -14% -30% -14%);
+    transform: translateY(0);
+  }
+}
+
+/* --- Sign-in panel (fades in when the half is expanded) ------------- */
+
+/* Clearance + robust centering: the extra top padding keeps the card
+   clear of the fixed chrome (back button bottom ≈3.6rem, centered
+   brand block bottom ≈4.6rem); margin:auto centers the card when it
+   fits and pins it to the scrollable top when it doesn't (short
+   viewports), with the panel scrolling — the old hard center +
+   overflow:hidden clipped the card under the brand and made the top
+   unreachable. */
+.split-login__panel {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1rem;
+  padding: clamp(5rem, 10vh, 6rem) 1.5rem 2rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity calc(0.4s * var(--speed)) var(--lm-ease-out),
+    visibility 0s linear calc(0.4s * var(--speed));
+}
+
+.split-login__half--expanded .split-login__panel {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity calc(0.4s * var(--speed)) var(--lm-ease-out) calc(0.12s * var(--speed)),
+    visibility 0s;
+}
+
+/* The card rises a short way as it fades, so expanding feels like the
+   panel coming toward you rather than appearing. */
+.split-login__panel .login-card,
+.split-login__panel .auth-card {
+  margin: auto; /* free space split evenly top/bottom while it fits */
+  position: relative;
+  z-index: 1;
+  transform: translateY(10px);
+  transition: transform calc(0.55s * var(--speed)) var(--lm-ease-out);
+}
+
+.split-login__half--expanded .split-login__panel .login-card,
+.split-login__half--expanded .split-login__panel .auth-card {
+  transform: translateY(0);
+}
+
+.split-login__back {
+  position: absolute;
+  top: 1.5rem;
+  left: 1.5rem;
+  z-index: 3;
+}
+
+/* --- Brand mark (top-left; slides to horizontal center when a half
+       is expanded, clearing the space used by the back button) --------- */
+
+/* Idle: the two lines sit flush left at the corner (baseline look).
+   Expanded: each line ends horizontally centered on the viewport
+   (baseline look). The slide between them is a pure transform: every
+   line moves from its corner slot to center with
+   translateX(calc(50vw - corner - 50%)), where the 50% resolves
+   against THAT line's own width — so no measuring, no align-items
+   snap, no reflow mid-flight, and the collapse plays the exact same
+   transition in reverse. (The old keyframe started at
+   +translateX(50vw - 2rem) relative to the already-centered layout —
+   off to the RIGHT of its final position, which is why the mark
+   appeared to fly in from the top-right.) */
+.split-login__brand {
+  --brand-corner: 2rem;
+  position: absolute;
+  top: 1.6rem;
+  left: var(--brand-corner);
+  width: max-content;
+  max-width: calc(100vw - 2 * var(--brand-corner));
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  pointer-events: none;
+}
+
+.split-login__brand-name {
+  font-family: var(--lm-font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-variation-settings: 'SOFT' 20, 'WONK' 1;
+  font-size: var(--lm-step-1);
+  letter-spacing: 0.005em;
+  color: var(--lm-ink);
+  white-space: nowrap;
+  transform: translateX(0);
+  transition: transform calc(700ms * var(--speed)) var(--lm-ease-inout);
+}
+
+.split-login__brand-kicker {
+  font-size: var(--lm-step--2);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: var(--lm-ink-faint);
+  white-space: nowrap;
+  transform: translateX(0);
+  transition: transform calc(700ms * var(--speed)) var(--lm-ease-inout);
+}
+
+.split-login--expanded .split-login__brand > * {
+  transform: translateX(calc(50vw - var(--brand-corner) - 50%));
+}
+
+/* ═══ Scoped overrides for the shared components on this screen ═══════
+   Each selector carries a .split-login ancestor so the rules win the
+   cascade against styles/global.css by specificity (not by source order,
+   which is not guaranteed once this lazy chunk's CSS is injected) and so
+   nothing here can restyle a button or a card on another screen. */
+
+/* --- Card: solid porcelain, one rim light, paired shadows ------------- */
+
+.split-login .auth-card,
+.split-login .login-card {
+  width: 100%;
+  max-width: 27rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 2.5rem;
+  background: var(--lm-porcelain);
+  /* No backdrop-filter: the card is opaque, so a blur would cost a
+     compositing pass for nothing. */
+  border: 1px solid var(--lm-edge);
+  border-radius: var(--lm-r-lg);
+  box-shadow:
+    inset 0 1px 0 var(--lm-rim),
+    var(--lm-shadow-3);
+}
+
+.split-login .login-card h2,
+.split-login .auth-card h2 {
+  margin: 0;
+  font-family: var(--lm-font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-variation-settings: 'SOFT' 16, 'WONK' 1;
+  font-size: var(--lm-step-2);
+  letter-spacing: -0.005em;
+  color: var(--lm-ink);
+}
+
+.split-login .login-card__subtitle {
+  margin: -0.35rem 0 0.75rem;
+  color: var(--lm-ink-muted);
+  font-size: var(--lm-step--1);
+  line-height: 1.55;
+}
+
+/* --- Fields ------------------------------------------------------------ */
+
+.split-login .login-card__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: var(--lm-step--1);
+  font-weight: 500;
+  color: var(--lm-ink-soft);
+}
+
+.split-login .login-card__field > span {
+  letter-spacing: 0.02em;
+}
+
+/* Triple-class on purpose: it has to beat
+   `.login-card .login-card__field input` (0,2,1) in global.css, which
+   itself exists to beat the generic `input:not():not()` rule. */
+.split-login .login-card .login-card__field input {
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--lm-edge);
+  border-radius: var(--lm-r-sm);
+  font: inherit;
+  font-size: var(--lm-step-0);
+  color: var(--lm-ink);
+  /* Explicitly solid and slightly sunk: the typed access ID must not sit
+     on a see-through field where the ambient background bleeds under it. */
+  background: var(--lm-porcelain-sunk);
+  box-shadow: inset 0 1px 2px rgba(36, 26, 46, 0.05);
+  transition: border-color calc(var(--lm-t-fast) * var(--speed)) var(--lm-ease-out),
+    background calc(var(--lm-t-fast) * var(--speed)) var(--lm-ease-out),
+    box-shadow calc(var(--lm-t-fast) * var(--speed)) var(--lm-ease-out);
+}
+
+.split-login .login-card .login-card__field input::placeholder {
+  color: var(--lm-ink-faint);
+}
+
+.split-login .login-card .login-card__field input:hover {
+  border-color: var(--lm-edge-strong);
+}
+
+/* Focus: the field lifts to full porcelain and takes an iris ring. The
+   global focus rule replaces box-shadow wholesale, so the inset highlight
+   is re-asserted alongside the ring rather than lost. */
+.split-login .login-card .login-card__field input:focus-visible {
+  outline: none;
+  background: var(--lm-porcelain);
+  border-color: var(--lm-iris);
+  box-shadow:
+    inset 0 1px 0 var(--lm-rim),
+    0 0 0 3px var(--lm-iris-ring);
+}
+
+/* --- Buttons ----------------------------------------------------------- */
+
+.split-login .btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.68rem 1.4rem;
+  overflow: hidden;
+  border: 1px solid var(--lm-edge);
+  border-radius: var(--lm-r-pill);
+  background: var(--lm-porcelain);
+  color: var(--lm-ink);
+  font-family: var(--lm-font-ui);
+  font-size: var(--lm-step--1);
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 var(--lm-rim),
+    var(--lm-shadow-1);
+  transition: transform calc(var(--lm-t-fast) * var(--speed)) var(--lm-ease-out),
+    box-shadow calc(var(--lm-t-fast) * var(--speed)) var(--lm-ease-out),
+    border-color calc(var(--lm-t-fast) * var(--speed)) var(--lm-ease-out),
+    background calc(var(--lm-t-fast) * var(--speed)) var(--lm-ease-out),
+    color calc(var(--lm-t-fast) * var(--speed)) var(--lm-ease-out);
+}
+
+.split-login .btn:hover {
+  border-color: var(--lm-edge-strong);
+  box-shadow:
+    inset 0 1px 0 var(--lm-rim),
+    var(--lm-shadow-2);
+  transform: translateY(-1px);
+}
+
+.split-login .btn:active {
+  transform: translateY(0);
+  box-shadow:
+    inset 0 1px 0 var(--lm-rim),
+    var(--lm-shadow-1);
+}
+
+.split-login .btn:disabled {
+  opacity: 0.55;
+  filter: saturate(0.4);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: var(--lm-shadow-1);
+}
+
+.split-login .btn:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 1px 0 var(--lm-rim),
+    0 0 0 3px var(--lm-iris-ring);
+}
+
+/* Primary: the only place the iris is spent as a fill.
+   The .login-card hop is not decorative: styles/global.css carries a
+   `:root[data-theme='dark'] .btn--primary` override at (0,3,0), which would
+   outrank a bare `.split-login .btn--primary` (0,2,0) and silently restore
+   the old violet gradient in dark mode. Matching at (0,3,0) and relying on
+   source order (this stylesheet is injected after global.css) is what makes
+   the concept win in both themes. */
+.split-login .login-card .btn--primary {
+  border-color: transparent;
+  background: linear-gradient(178deg, var(--lm-iris-lift) 0%, var(--lm-iris) 52%, var(--lm-iris-deep) 100%);
+  color: #fff;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    var(--lm-shadow-iris);
+}
+
+:root[data-theme='dark'] .split-login .login-card .btn--primary {
+  color: #14102a;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    var(--lm-shadow-iris);
+}
+
+.split-login .login-card .btn--primary:hover {
+  background: linear-gradient(178deg, var(--lm-iris) 0%, var(--lm-iris-deep) 100%);
+  border-color: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 4px 10px rgba(91, 75, 214, 0.28),
+    0 20px 38px -14px rgba(91, 75, 214, 0.5);
+}
+
+/* A single sheen crosses the button on hover — one-shot, transform-only,
+   and clipped by the pill's overflow:hidden. */
+.split-login .btn--primary::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 45%;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.34) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(0);
+  transition: transform calc(0.7s * var(--speed)) var(--lm-ease-out);
+  pointer-events: none;
+}
+
+.split-login .btn--primary:hover::after {
+  transform: translateX(320%);
+}
+
+/* The "Back" control is chrome, not an action: quieter than a default
+   button so it never competes with the sign-in. */
+.split-login .split-login__back {
+  padding: 0.45rem 1rem;
+  background: transparent;
+  border-color: var(--lm-edge);
+  color: var(--lm-ink-muted);
+  font-size: var(--lm-step--2);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: none;
+}
+
+.split-login .split-login__back:hover {
+  background: var(--lm-porcelain);
+  color: var(--lm-ink);
+  box-shadow: var(--lm-shadow-1);
+}
+
+/* --- Developer card: hosting-platform connect buttons -----------------
+   "Continue with Cloudflare/Vercel" under the GitHub button — shown only
+   when the backend reports that platform's OAuth login as configured.
+   The flow signs in with GitHub first, then continues to the platform's
+   authorize URL (the exchange needs the admin session). */
+
+.split-login .login-card__platforms {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.55rem;
+  margin-top: 0.4rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--lm-edge);
+}
+
+.split-login .login-card__platform-label {
+  font-size: var(--lm-step--2);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--lm-ink-faint);
+  text-align: center;
+}
+
+.split-login .login-card__platforms .btn {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--lm-edge-strong);
+  color: var(--lm-ink-soft);
+  box-shadow: none;
+}
+
+.split-login .login-card__platforms .btn:hover {
+  background: var(--lm-iris-tint);
+  border-style: solid;
+  border-color: var(--lm-iris);
+  color: var(--lm-iris);
+  box-shadow: none;
+}
+
+/* --- Error banner ------------------------------------------------------- */
+
+.split-login .error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid rgba(176, 58, 84, 0.28);
+  border-left: 2px solid var(--lm-danger);
+  border-radius: var(--lm-r-sm);
+  background: var(--lm-danger-tint);
+  color: var(--lm-danger);
+  font-size: var(--lm-step--1);
+  line-height: 1.45;
+}
+
+/* The floating controls pill — the one remaining glass object on this
+   screen — is styled in ui/components/FloatingControls.css, scoped to
+   `.floating-controls` so the same treatment reaches the OAuth callback
+   screens and never touches the header's copies of the same toggles. */
+
+/* --- Narrow screens: stack the halves ------------------------------- */
+
+@media (max-width: 700px) {
+  .split-login__halves {
+    flex-direction: column;
+  }
+
+  /* Stacked halves: the same one-line diagonal seam, rotated — the two
+     tints meet along a single slant (mirror of the desktop geometry,
+     swapped axes: the shared line runs (0, boundary−1.5rem) at the left
+     to (100%, boundary+1.5rem) at the right; the extension/padding
+     trick moves to the vertical axis). */
+  .split-login__half--client {
+    margin-right: 0;
+    padding-right: 0;
+    margin-bottom: -3rem;
+    padding-bottom: 1.5rem;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - 3rem));
+  }
+
+  .split-login__half--developer {
+    padding-left: 0;
+    padding-top: 1.5rem;
+    clip-path: polygon(0 0, 100% 3rem, 100% 100%, 0 100%);
+  }
+
+  /* The seam glow rotates with the seam: when the halves stack, the seam
+     runs horizontally, so the glow re-aims from the horizontal edge to the
+     vertical one and tightens — same two custom properties, no gradient
+     re-declared. */
+  .split-login__half--client {
+    --lm-glow-dir: to top;
+    --lm-seam-glow-size: 6rem;
+  }
+
+  .split-login__half--developer {
+    --lm-glow-dir: to bottom;
+    --lm-seam-glow-size: 6rem;
+  }
+
+  .split-login__half--developer::after {
+    clip-path: polygon(0 0, 100% 3rem, 100% calc(3rem + 1px), 0 1px);
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.35) 0%,
+      rgba(255, 255, 255, 0.95) 40%,
+      rgba(255, 255, 255, 0.95) 60%,
+      rgba(255, 255, 255, 0.3) 100%
+    );
+  }
+
+  .split-login__label {
+    white-space: normal;
+  }
+
+  .split-login__panel {
+    /* Same top clearance as desktop (the mobile brand sits slightly
+       higher but the 5rem floor covers it); stretch keeps the card
+       full-width, and margin:auto in the shared rule still centers it
+       when it fits or pins it to the scrollable top when it doesn't. */
+    padding: clamp(5rem, 10vh, 6rem) 1rem 1.5rem;
+    align-items: stretch;
+  }
+
+  .split-login .auth-card,
+  .split-login .login-card {
+    padding: 1.75rem 1.5rem;
+  }
+
+  .split-login__brand {
+    --brand-corner: 1.25rem; /* feeds left + the slide transform */
+    top: 1.2rem;
+  }
+
+  /* 326px of nowrap tracking cannot share a 375px top row with the
+     corner name and the controls pill — on phones the kicker is cut,
+     the name carries the brand. */
+  .split-login__brand-kicker {
+    display: none;
+  }
+
+  /* On phones the expanded top row is fully occupied — Back at the
+     left, the EN/FR + theme pill at the right, no room between them
+     for the (nowrap) lockup. Instead of sliding into that crowd, the
+     brand simply fades away when a half expands; the corner lockup
+     returns on collapse. Desktop keeps the slide-to-center. */
+
+  .split-login--expanded .split-login__brand {
+    opacity: 0;
+    transition: opacity calc(0.4s * var(--speed)) var(--lm-ease-out);
+  }
+}
+
+/* --- Short viewports: the sign-in card may scroll, and a card sliding
+       under the centered brand reads as text-on-text — fade the brand
+       away when a half is expanded while short (mirrors the mobile
+       rule; roomy viewports keep the slide-to-center). */
+@media (max-height: 560px) {
+  .split-login--expanded .split-login__brand {
+    opacity: 0;
+    transition: opacity calc(0.4s * var(--speed)) var(--lm-ease-out);
+  }
+}
+
+/* --- Reduced motion: instant flex changes, opacity fades only -------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .split-login__half,
+  .split-login__half--developer,
+  .split-login__half--developer::after,
+  .split-login__veil {
+    transition: none;
+  }
+
+  /* The hero arrives already in place — no mask rise, no diamond swell. */
+  .split-login__label,
+  .split-login__kicker {
+    animation: none;
+    opacity: 1;
+    clip-path: none;
+    transform: none;
+  }
+
+  .split-login__hero::before {
+    animation: none;
+    opacity: 0.85;
+    transform: rotate(45deg);
+  }
+
+  /* Brand slide becomes an instant corner/center swap. */
+  .split-login__brand > * {
+    transition: none;
+  }
+
+  .split-login__hero {
+    transition: opacity calc(0.2s * var(--speed)) var(--lm-ease-out);
+  }
+
+  .split-login__panel {
+    transition: opacity calc(0.2s * var(--speed)) var(--lm-ease-out);
+  }
+
+  .split-login__half--expanded .split-login__panel {
+    transition: opacity calc(0.2s * var(--speed)) var(--lm-ease-out);
+  }
+
+  .split-login__panel .login-card,
+  .split-login__panel .auth-card,
+  .split-login__half--expanded .split-login__panel .login-card,
+  .split-login__half--expanded .split-login__panel .auth-card {
+    transition: none;
+    transform: none;
+  }
+
+  .split-login .btn,
+  .split-login .btn::after,
+  .split-login .login-card .login-card__field input {
+    transition: none;
+  }
+
+  .split-login .btn:hover,
+  .split-login .btn:active {
+    transform: none;
+  }
+
+  .split-login .btn--primary:hover::after {
+    transform: translateX(0);
+    opacity: 0;
+  }
+}

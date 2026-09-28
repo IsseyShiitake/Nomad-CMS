@@ -1,0 +1,226 @@
+/* RepoTile — miniature capture of a repository's GitHub Pages site.
+   Sizes: --tile (grid hero), --banner (compact workspace header),
+   --card (small thumbnail). The iframe is scaled up to cover the
+   tile like a browser screenshot; the fallback is a pastel panel
+   with the repo initial. */
+
+.repo-thumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.55));
+  border-radius: var(--radius-lg, 18px);
+  overflow: hidden;
+  /* clip-path clips in the paint phase, so it survives the hover lift's
+     compositor promotion — on some GPU setups Chromium drops the ancestor
+     overflow+radius clip for a cross-process iframe (square corners bleed
+     outside the rounded tile); paint-phase clipping is immune. */
+  clip-path: inset(0 round var(--radius-lg, 18px));
+  background: var(--glass-bg, rgba(255, 255, 255, 0.55));
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(16, 24, 40, 0.08));
+  transition: transform calc(0.45s * var(--speed)) var(--ease-soft), box-shadow calc(0.45s * var(--speed)) var(--ease-soft);
+}
+
+.repo-thumb button,
+button.repo-thumb {
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+/* Interactive tiles lift on hover. */
+.repo-thumb:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring, 0 0 0 3px rgba(109, 90, 158, 0.25));
+}
+
+/* --- capture frame ------------------------------------------------- */
+
+.repo-thumb__frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.repo-thumb__iframe {
+  /* Scaled to cover the tile: the site renders at the virtual desktop
+     viewport (1200px wide; height set from the tile's own box by the
+     ResizeObserver in RepoTile) and is shrunk into the miniature like a
+     screenshot, header-aligned. --thumb-scale / --thumb-viewport-height
+     are set inline per tile; the fallbacks keep pre-observer renders
+     sane (jsdom, no ResizeObserver). */
+  width: 1200px;
+  height: var(--thumb-viewport-height, 800px);
+  border: 0;
+  background: #fff;
+  opacity: 0;
+  transition: opacity calc(0.6s * var(--speed)) var(--ease-soft);
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  transform: scale(var(--thumb-scale, 0.25));
+}
+
+.repo-thumb__iframe--loaded {
+  opacity: 1;
+}
+
+/* --- fallback monogram --------------------------------------------- */
+
+.repo-thumb__fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity calc(0.5s * var(--speed)) var(--ease-soft);
+}
+
+/* Fallback panels — hue deterministic per repo name hash. Lumen keeps them
+   inside the field's own value ramp and differentiates repos with a faint
+   accent wash (iris / mint / amber at ~10%) rather than with six unrelated
+   pastels, so a grid of unloaded tiles still reads as one system. The ramp
+   tokens flip in dark theme, so these do too. */
+.repo-thumb__fallback--0 {
+  background:
+    linear-gradient(135deg, rgba(91, 75, 214, 0.1) 0%, rgba(91, 75, 214, 0) 55%),
+    linear-gradient(135deg, var(--lm-field-hi) 0%, var(--lm-field-lo) 100%);
+}
+.repo-thumb__fallback--1 {
+  background:
+    linear-gradient(135deg, rgba(111, 157, 132, 0.12) 0%, rgba(111, 157, 132, 0) 55%),
+    linear-gradient(135deg, var(--lm-field-hi) 0%, var(--lm-field-lo) 100%);
+}
+.repo-thumb__fallback--2 {
+  background:
+    linear-gradient(45deg, rgba(91, 75, 214, 0.1) 0%, rgba(91, 75, 214, 0) 55%),
+    linear-gradient(135deg, var(--lm-field-hi) 0%, var(--lm-field-lo) 100%);
+}
+.repo-thumb__fallback--3 {
+  background:
+    linear-gradient(135deg, rgba(217, 160, 91, 0.14) 0%, rgba(217, 160, 91, 0) 55%),
+    linear-gradient(135deg, var(--lm-field-hi) 0%, var(--lm-field-lo) 100%);
+}
+.repo-thumb__fallback--4 {
+  background: linear-gradient(45deg, var(--lm-field-hi) 0%, var(--lm-field-lo) 100%);
+}
+.repo-thumb__fallback--5 {
+  background:
+    linear-gradient(45deg, rgba(111, 157, 132, 0.12) 0%, rgba(111, 157, 132, 0) 55%),
+    linear-gradient(135deg, var(--lm-field-hi) 0%, var(--lm-field-lo) 100%);
+}
+
+.repo-thumb__initial {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: clamp(2.4rem, 8vw, 4rem);
+  /* Full-opacity ink at reduced alpha, not a mid-grey: the monogram sits
+     in the light the same way type does everywhere else in Lumen. */
+  color: var(--lm-ink, #241a2e);
+  opacity: 0.4;
+  text-shadow: 0 2px 12px rgba(255, 255, 255, 0.5);
+}
+
+:root[data-theme='dark'] .repo-thumb__initial {
+  color: var(--lm-ink, #f3eefa);
+  opacity: 0.42;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* --- name strip ------------------------------------------------------ */
+
+.repo-thumb__label {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.9rem;
+  background: var(--glass-bg-strong, rgba(255, 255, 255, 0.66));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.55));
+  /* 10px on a strip inset 12px from a 22px-cornered tile: the corners
+     stay concentric with the box the label floats in. */
+  border-radius: var(--radius, 10px);
+  /* A soft lift: the pill must stay readable over light captures (a
+     white 404 page) as well as dark ones — border alone isn't enough. */
+  box-shadow: 0 3px 14px rgba(16, 24, 40, 0.28);
+  backdrop-filter: blur(10px) saturate(1.25);
+  -webkit-backdrop-filter: blur(10px) saturate(1.25);
+}
+
+.repo-thumb__name {
+  font-family: var(--font-display);
+  font-style: italic; /* house rule: display type is italic serif */
+  font-size: 1rem;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-thumb__chip {
+  flex: none;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--kicker-tracking);
+  color: var(--color-text-muted);
+  opacity: 0;
+  transition: opacity calc(0.3s * var(--speed)) var(--ease-soft);
+}
+
+/* Chip (private/public) reveals on hover — desktop affordance. */
+.repo-thumb:hover .repo-thumb__chip,
+.repo-thumb:focus-visible .repo-thumb__chip {
+  opacity: 1;
+}
+
+/* --- sizes ----------------------------------------------------------- */
+
+.repo-thumb--tile {
+  min-height: 0;
+  height: 100%;
+}
+
+.repo-thumb--banner {
+  min-height: 96px;
+  flex: none;
+}
+
+.repo-thumb--card {
+  min-height: 64px;
+}
+
+.repo-thumb--card .repo-thumb__label {
+  display: none;
+}
+
+/* Only the tile size is a hover-lifting interactive miniature. */
+.repo-thumb--tile.repo-thumb--tile:hover,
+.repo-thumb--tile:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgba(16, 24, 40, 0.18));
+}
+
+:root[data-theme='dark'] .repo-thumb {
+  border-color: var(--glass-border, rgba(236, 231, 245, 0.12));
+}
+
+/* --- reduced motion -------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .repo-thumb,
+  .repo-thumb__iframe,
+  .repo-thumb__chip {
+    transition: none;
+  }
+
+  .repo-thumb--tile:hover {
+    transform: none;
+  }
+}

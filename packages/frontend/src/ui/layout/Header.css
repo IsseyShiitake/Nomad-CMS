@@ -1,0 +1,11 @@
+/* Header — CSS-drawn hamburger lines inside .header__menu-toggle.
+   All other header styling lives in styles/global.css. */
+
+.header__menu-line {
+  display: block;
+  width: 18px;
+  height: 2px;
+  margin: 2px auto;
+  background: currentColor;
+  border-radius: 2px;
+}

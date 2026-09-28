@@ -1,0 +1,593 @@
+/* Cinematic intro overlay — CONCEPT A "LUMEN".
+
+   The overlay carries its own opaque wash of the Lumen field so the route
+   behind it is never visible. Phase choreography via classes toggled in
+   IntroOverlay.tsx:
+   .intro--welcome → .intro--nomad (.intro--nomad-on) → stacked CMS column
+   (.intro--stacked) → words unfolding (.intro--words) → .intro--closing.
+   All movement is CSS; click or Escape skips to the closing fade.
+
+   ── What Lumen changes about this scene ──────────────────────────────
+   TYPE. --font-display is Didot → Bodoni MT → Playfair → Georgia → serif.
+   None of the first four exist on a stock Linux desktop and Georgia does
+   not either, so the brand's high-contrast italic silently renders as
+   Liberation/DejaVu Serif — a chunky Times substitute. That single
+   fallback is most of why the intro reads as unstyled rather than as an
+   intentional film title. Lumen sets Fraunces (variable soft-serif, real
+   italic, optical-size axis) with the same chain behind it, so the intent
+   finally renders and degrades to exactly what ships today if the font
+   cannot be fetched.
+
+   INK. The words were #4d3c56 at opacity .78 over pink — about 4:1, which
+   is why the whole scene feels soft-focus. They are now full-opacity
+   --lm-ink (~13:1) and opacity is used as an effect: the word brightens as
+   it crosses the centre, where the key light is, and dims as it leaves.
+
+   COMPOSITION. A hairline rail runs across the centre during scene 1, so
+   the two words read as travelling along something rather than floating
+   arbitrarily; scene 2 gets a single bloom of light behind the title.
+   Both are transform/opacity only.
+
+   PRESERVED DELIBERATELY. The drift keyframes keep their velocity
+   continuity (entry hands over still moving, ≈1s legible crawl, exit
+   leaves at the same speed) and the acronym tail keeps `left: 100%`.
+   Both were measured in docs/visual-rework-fix-plan-v2.md — the tail
+   anchored to the untranslated edge detaches from its capital by up to
+   110px once rows centre individually. Neither is re-litigated here. */
+
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* Opaque wash of the Lumen field — nothing shows through. Same
+     construction as .ambient__dream so the handoff to the app is
+     seamless when the overlay fades. */
+  background:
+    radial-gradient(72vmax circle at 88% 94%, var(--lm-fill) 0%, rgba(196, 178, 240, 0) 64%),
+    radial-gradient(58vmax circle at 6% 82%, var(--lm-counter) 0%, rgba(178, 226, 210, 0) 62%),
+    linear-gradient(152deg, var(--lm-field-hi) 0%, var(--lm-field-mid) 46%, var(--lm-field-lo) 100%);
+  cursor: default;
+  user-select: none;
+  /* Perf: no filter animation on a full-viewport layer — that forces a
+     composited repaint every frame. The wash is static; the rail, the
+     bloom and the word motion carry the life. */
+}
+
+/* Dark theme: the same story on the ink field. */
+:root[data-theme='dark'] .intro {
+  background:
+    radial-gradient(70vmax circle at 84% 90%, var(--lm-fill) 0%, rgba(64, 96, 140, 0) 62%),
+    radial-gradient(56vmax circle at 8% 78%, var(--lm-counter) 0%, rgba(58, 120, 108, 0) 60%),
+    linear-gradient(152deg, var(--lm-field-hi) 0%, var(--lm-field-mid) 48%, var(--lm-field-lo) 100%);
+}
+
+.intro__scene {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* --- Scene 1: Welcome / Bienvenue ---------------------------------- */
+
+/* Every animation below is gated on .intro--armed, which
+   IntroOverlay.tsx sets once the display face is available (capped at
+   1.2s). The stacked lockup is measured rather than laid out, so starting
+   the timeline before the real face lands would centre the rows on
+   fallback metrics and then jump. Unarmed, the overlay paints its wash and
+   nothing else — every animated element's base state is already its hidden
+   state, so there is no flash and no layout shift when arming happens. */
+
+/* The rail: a hairline across the centre that the two words travel along.
+   Absolutely positioned, so it never joins the scene's flex flow. Fades
+   out when scene 2 takes over. */
+.intro__welcome::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 7%;
+  right: 7%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--lm-edge-strong) 16%,
+    var(--lm-edge-strong) 84%,
+    transparent 100%
+  );
+  opacity: 0;
+}
+
+.intro--armed .intro__welcome::before {
+  animation: intro-rail-in calc(1400ms * var(--speed)) var(--lm-ease-out) forwards;
+}
+
+.intro--nomad-on .intro__welcome::before {
+  animation: intro-rail-out calc(500ms * var(--speed)) var(--lm-ease-inout) forwards;
+}
+
+@keyframes intro-rail-in {
+  from {
+    opacity: 0;
+    transform: scaleX(0.72);
+  }
+  to {
+    opacity: 0.85;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes intro-rail-out {
+  to {
+    opacity: 0;
+    transform: scaleX(0.86);
+  }
+}
+
+/* Full-opacity ink; the keyframes modulate opacity as a lighting effect,
+   never as a way to soften the type. */
+.intro__word {
+  display: block;
+  font-family: var(--lm-font-display);
+  font-style: italic;
+  font-weight: 350;
+  /* Optical sizing is the reason to pick a variable face here: at 4.4vw
+     the high-contrast thin strokes stay crisp instead of filling in. */
+  font-variation-settings: 'SOFT' 20, 'WONK' 1;
+  font-size: clamp(2.1rem, 4.6vw, 3.5rem);
+  line-height: 1.4;
+  letter-spacing: 0.005em;
+  color: var(--lm-ink);
+  opacity: 0;
+  /* A soft bloom so the ink sits in the light instead of on top of it. */
+  text-shadow: 0 1px 28px rgba(255, 255, 255, 0.55);
+  will-change: transform, opacity;
+}
+
+:root[data-theme='dark'] .intro__word {
+  text-shadow: 0 1px 32px rgba(169, 155, 255, 0.22);
+}
+
+/* Welcome: left → right. Bienvenue: right → left (mirrored). The middle
+   dwell is ≈30% of the total so that at --speed 0.7 the legible centre
+   drift lasts ≈1s (0.3 × 0.7 × 4700ms). */
+.intro--armed .intro__word--welcome {
+  animation: intro-welcome-drift calc(4700ms * var(--speed)) linear forwards;
+}
+
+.intro--armed .intro__word--bienvenue {
+  animation: intro-bienvenue-drift calc(4700ms * var(--speed)) linear forwards;
+}
+
+/* One continuous journey: the entry decays exponentially but hands over
+   still moving (~the middle drift speed), the centre is a slow legible
+   crawl (~1s scaled), and the exit leaves at that same speed and
+   accelerates exponentially. Velocity is continuous at both joins — no
+   dead stop, so it reads as a single motion, not three animations.
+
+   Lumen only touches the opacity stops: the word arrives dim, reaches
+   full ink as it crosses the key light at the centre, and dims again on
+   the way out. The transform stops are the measured ones and are
+   unchanged. */
+@keyframes intro-welcome-drift {
+  0% {
+    opacity: 0;
+    transform: translateX(-55vw);
+    animation-timing-function: cubic-bezier(0.08, 0.55, 0.5, 0.95); /* expo-out that still moves at the join */
+  }
+  7% {
+    opacity: 0.72;
+  }
+  35% {
+    opacity: 1;
+    transform: translateX(-2.25vw);
+    animation-timing-function: linear; /* ≈1s legible crawl across the centre */
+  }
+  65% {
+    opacity: 1;
+    transform: translateX(2.25vw);
+    animation-timing-function: cubic-bezier(0.5, 0.05, 0.85, 0.3); /* expo-in starting at the crawl speed */
+  }
+  92% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(58vw);
+  }
+}
+
+@keyframes intro-bienvenue-drift {
+  0% {
+    opacity: 0;
+    transform: translateX(55vw);
+    animation-timing-function: cubic-bezier(0.08, 0.55, 0.5, 0.95);
+  }
+  7% {
+    opacity: 0.72;
+  }
+  35% {
+    opacity: 1;
+    transform: translateX(2.25vw);
+    animation-timing-function: linear;
+  }
+  65% {
+    opacity: 1;
+    transform: translateX(-2.25vw);
+    animation-timing-function: cubic-bezier(0.5, 0.05, 0.85, 0.3);
+  }
+  92% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-58vw);
+  }
+}
+
+/* The scene hands off to Nomad as the words exit; no separate fade. */
+.intro__welcome {
+  gap: 0.4rem;
+}
+
+/* --- Scene 2: Nomad CMS -------------------------------------------- */
+
+.intro__nomad {
+  visibility: hidden;
+}
+
+.intro--nomad-on .intro__nomad {
+  visibility: visible;
+}
+
+.intro--nomad-on .intro__welcome {
+  visibility: hidden;
+}
+
+/* The bloom: one soft light behind the title that swells as "Nomad"
+   materialises out of blur, then settles to a low steady glow. Radial
+   gradient (already soft — no runtime blur) animated on transform and
+   opacity only, so it stays on the compositor. */
+.intro__nomad::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 74vmin;
+  height: 74vmin;
+  margin: -37vmin 0 0 -37vmin;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0) 66%);
+  opacity: 0;
+  transform: scale(0.78);
+  will-change: transform, opacity;
+}
+
+.intro--nomad-on .intro__nomad::before {
+  animation: intro-bloom calc(2600ms * var(--speed)) var(--lm-ease-out) forwards;
+}
+
+:root[data-theme='dark'] .intro__nomad::before {
+  background: radial-gradient(
+    circle,
+    rgba(140, 122, 220, 0.42) 0%,
+    rgba(140, 122, 220, 0) 66%
+  );
+}
+
+@keyframes intro-bloom {
+  0% {
+    opacity: 0;
+    transform: scale(0.78);
+  }
+  34% {
+    opacity: 0.95;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 0.5;
+    transform: scale(1.16);
+  }
+}
+
+.intro__nomad {
+  --intro-title-size: clamp(3.1rem, 9.2vw, 5.75rem);
+}
+
+.intro__title {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* The acronym hugs the name: the line boxes already carry leading, so
+     only a sliver of flex gap is wanted between the two. */
+  gap: 0.02em;
+  font-family: var(--lm-font-display);
+  font-size: var(--intro-title-size);
+  /* Arrival: the whole title materialises out of a soft blur — one
+     progressive fade from full blur to zero. One-shot filter on a small
+     text layer (never looped); base state is the hidden start. */
+  opacity: 0;
+}
+
+.intro--nomad-on .intro__title {
+  animation: intro-blur-in calc(1100ms * var(--speed)) var(--lm-ease-out) forwards;
+}
+
+@keyframes intro-blur-in {
+  from {
+    opacity: 0;
+    filter: blur(24px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* Nomad: italic serif ink. */
+.intro__name {
+  display: inline-flex;
+  line-height: 1.12;
+  font-style: italic;
+  font-weight: 380;
+  font-variation-settings: 'SOFT' 24, 'WONK' 1;
+  letter-spacing: 0.004em;
+  color: var(--lm-ink);
+}
+
+/* CMS: upright capitals, quieter, smaller — below Nomad. The three words
+   sit close together (tight tracking, small gap). Weight 300 gives
+   genuinely thin hairline strokes on the faces that ship a Light cut. */
+.intro__acronym {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18em;
+  line-height: 1.1;
+  font-family: var(--lm-font-display);
+  font-size: 0.44em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 300;
+  font-variation-settings: 'SOFT' 0, 'WONK' 0;
+  color: var(--lm-ink-muted);
+}
+
+/* Letters are plain in-flow spans: visibility and arrival are owned by
+   the title-level blur-fade, and the stacking transform moves whole
+   words (letter + tail together) — never the letters alone. */
+.intro__letter,
+.intro__acronym-letter {
+  display: inline-block;
+}
+
+/* The rest of each word, hidden behind its letter until .intro--words:
+   "ontent" behind C, "anagement" behind M, "ystem" behind S. The tail is
+   absolutely positioned so unfolding never changes the row layout — the
+   stacked column and "Nomad" above it cannot shift. */
+.intro__acronym-word {
+  position: relative;
+  display: inline-block;
+  /* Stacking glides every word so its unfolded row centres on "Nomad"'s
+     axis (offsets measured in IntroOverlay just before stacking;
+     translate-only, so nothing reflows and "Nomad" stays still). */
+  transition: transform calc(700ms * var(--speed)) var(--lm-ease-inout);
+}
+
+.intro__acronym-tail {
+  display: inline-block;
+  position: absolute;
+  /* Glued to the capital's right edge: absolute children translate with
+     the word, so plain 100% keeps the unfold seam on the capital during
+     and after the centring glide. (Anchoring the seam to the
+     untranslated edge instead — left: calc(100% - var(--sx)) — was
+     measured to detach capital and tail by up to 110px once rows centre
+     individually. See docs/visual-rework-fix-plan-v2.md.) */
+  left: 100%;
+  top: 0;
+  margin-left: -0.04em; /* cancel the capital's trailing letter-spacing */
+  font-size: 1em;
+  font-style: normal;
+  font-weight: 300;
+  letter-spacing: 0.055em;
+  text-transform: lowercase;
+  color: inherit;
+  /* The reveal window starts closed on the capital's right edge and
+     wipes open: the word emerges from behind its letter. Absolute
+     positioning keeps the row layout frozen while it unfolds. */
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  transition: max-width calc(800ms * var(--speed)) var(--lm-ease-inout) calc(120ms * var(--speed)),
+    opacity calc(400ms * var(--speed)) var(--lm-ease-out) calc(120ms * var(--speed));
+}
+
+.intro--stacked .intro__acronym-word {
+  transform: translate(var(--sx, 0px), var(--sy, 0px));
+}
+
+.intro--words .intro__acronym-tail {
+  max-width: 14em;
+  opacity: 1;
+}
+
+/* --- Progress hairline ---------------------------------------------- */
+
+/* A 1px iris line along the bottom edge that fills over exactly the
+   scripted timeline. It tells the visitor the sequence is finite and
+   that clicking shortens it — the hint says "click to continue", this
+   shows how much is left. The duration comes from IntroOverlay.tsx as a
+   custom property so the CSS and the JS timers cannot drift apart. */
+.intro__progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(90deg, var(--lm-iris), var(--lm-iris-lift));
+  opacity: 0.42;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+}
+
+.intro--armed .intro__progress {
+  animation: intro-progress var(--intro-total, 7230ms) linear forwards;
+}
+
+@keyframes intro-progress {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* --- Closing fade ---------------------------------------------------- */
+
+.intro--closing {
+  animation: intro-fade-out calc(600ms * var(--speed)) var(--lm-ease-out) forwards;
+}
+
+@keyframes intro-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* --- Skip hint kicker ------------------------------------------------ */
+
+.intro__hint {
+  position: absolute;
+  bottom: 2.25rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  font-family: var(--lm-font-ui);
+  font-size: var(--lm-step--2);
+  font-weight: 500;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--lm-ink-faint);
+  opacity: 0;
+}
+
+.intro--armed .intro__hint {
+  animation: intro-hint-in calc(900ms * var(--speed)) var(--lm-ease-out) calc(700ms * var(--speed))
+    forwards;
+}
+
+/* Hairline rules either side of the kicker, so it reads as a caption
+   rather than as stray text at the bottom of the screen. */
+.intro__hint::before,
+.intro__hint::after {
+  content: '';
+  width: clamp(24px, 6vw, 68px);
+  height: 1px;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+@keyframes intro-hint-in {
+  to {
+    opacity: 0.9;
+  }
+}
+
+/* --- Reduced motion: no movement, opacity fades only ------------------ */
+
+/* Every selector here repeats the .intro--armed form as well as the bare
+   one: the armed gate above is (0,2,0), so a bare (0,1,0) override would
+   lose the cascade and the animation would still run. */
+
+@media (prefers-reduced-motion: reduce) {
+  .intro {
+    animation: none;
+  }
+
+  .intro__welcome::before,
+  .intro--armed .intro__welcome::before {
+    animation: none;
+    opacity: 0.7;
+    transform: none;
+  }
+
+  .intro--nomad-on .intro__welcome::before {
+    animation: intro-fade-out calc(400ms * var(--speed)) var(--lm-ease-out) forwards;
+  }
+
+  .intro__word--welcome,
+  .intro__word--bienvenue,
+  .intro--armed .intro__word--welcome,
+  .intro--armed .intro__word--bienvenue {
+    transform: none;
+    animation: intro-fade-in calc(500ms * var(--speed)) var(--lm-ease-out) forwards;
+  }
+
+  /* Words fade out in place once scene 2 takes over. */
+  .intro--nomad-on .intro__word--welcome,
+  .intro--nomad-on .intro__word--bienvenue {
+    animation: intro-fade-out calc(400ms * var(--speed)) var(--lm-ease-out) forwards;
+  }
+
+  /* No bloom swell — a static soft glow so the title still has depth. */
+  .intro__nomad::before,
+  .intro--nomad-on .intro__nomad::before {
+    animation: none;
+    opacity: 0.45;
+    transform: scale(1.06);
+  }
+
+  /* Title arrives by plain fade — no blur sweep, no movement. */
+  .intro--nomad-on .intro__title {
+    animation: intro-fade-in-title calc(500ms * var(--speed)) var(--lm-ease-out) forwards;
+  }
+
+  /* Whole words appear already stacked — no glide, no tail slide. The
+     tails still open on .intro--words, but instantly: the reveal is a
+     state change, not a movement. */
+  .intro__acronym-word,
+  .intro--stacked .intro__acronym-word {
+    transition: none;
+    transform: translate(var(--sx, 0px), var(--sy, 0px));
+  }
+
+  .intro__acronym-tail,
+  .intro--words .intro__acronym-tail {
+    transition: none;
+  }
+
+  .intro__hint,
+  .intro--armed .intro__hint {
+    animation: intro-hint-in calc(500ms * var(--speed)) var(--lm-ease-out) forwards;
+  }
+
+  /* The progress line is information, not decoration — keep it, but
+     without the sweep it is simply present. */
+  .intro__progress,
+  .intro--armed .intro__progress {
+    animation: none;
+    transform: scaleX(1);
+    opacity: 0.28;
+  }
+}
+
+@keyframes intro-fade-in-title {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes intro-fade-in {
+  to {
+    opacity: 1;
+  }
+}

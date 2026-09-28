@@ -1,0 +1,29 @@
+# Local development secrets for the Cloudflare Worker.
+# Copy to .dev.vars and fill in real values.
+# .dev.vars is gitignored — never commit real secrets.
+
+# GitHub OAuth client secret. SECRET.
+GITHUB_CLIENT_SECRET=replace-me
+
+# Local-dev var overrides (not secrets, but .dev.vars entries take
+# precedence over wrangler.toml [vars] during `wrangler dev`): point the
+# Worker at YOUR local OAuth app instead of the production values checked
+# into the toml. Uncomment and fill for local development.
+# GITHUB_CLIENT_ID=your-local-oauth-app-client-id
+# GITHUB_REDIRECT_URI=http://localhost:5173/auth/callback
+
+# AES-256 key encrypting session/client/connection records at rest. SECRET.
+# An explicit key is recommended (generate one with `openssl rand -base64 32`).
+# When ABSENT, the Worker self-provisions a key into KV on first boot
+# (single-tenant convenience; see services/auth/crypto.ts for the tradeoff).
+SESSION_ENCRYPTION_KEY=replace-me
+
+# Platform OAuth login (optional locally; leave unset to hide the buttons).
+# Cloudflare: dash.cloudflare.com → Manage Account → OAuth clients.
+# Vercel: vercel.com → Account Settings → Create App (PKCE S256 is used).
+CLOUDFLARE_OAUTH_CLIENT_SECRET=replace-me
+VERCEL_OAUTH_CLIENT_SECRET=replace-me
+
+# Optional (a var, not a secret): the GitHub login pinned as operator.
+# Empty/absent = the first GitHub login claims the slot (write-once in KV).
+# OPERATOR_LOGIN=your-github-login

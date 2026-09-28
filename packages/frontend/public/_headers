@@ -1,0 +1,17 @@
+# Workers Static Assets headers
+# Served on every route for production deployment.
+#
+# NOTE: the Content-Security-Policy line below is REGENERATED at build time
+# from index.html's CSP meta tag (vite.config.ts cspPlugin) — the two
+# sources cannot drift; edit the policy in index.html only.
+
+# Security headers for all routes
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; connect-src 'self' CMS_API_ORIGIN; font-src 'self' https://fonts.gstatic.com; frame-src 'self' https:; frame-ancestors 'none'; base-uri 'self'
+
+# SPA fallback: HTML pages served from root
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate

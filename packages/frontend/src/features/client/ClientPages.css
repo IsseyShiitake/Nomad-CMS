@@ -1,0 +1,209 @@
+/* Client workspace — hero → banner + drawer flow.
+   Tokens (glass surfaces, easing, radii) come from theme.css, so dark
+   mode is free. */
+
+.client-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Small uppercase kicker line above headings. */
+.client-pages__kicker {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--kicker-tracking);
+  color: var(--color-text-muted);
+  padding-left: var(--kicker-tracking); /* balance the trailing letter-spacing */
+}
+
+/* Large display-serif guide line. */
+.client-pages__guide {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  line-height: 1.15;
+  color: var(--color-text);
+}
+
+.client-pages__guide--sub {
+  font-size: clamp(1.15rem, 2.5vw, 1.6rem);
+}
+
+/* Closed state: full-viewport hero — one giant miniature capture tile. */
+.client-pages__hero {
+  min-height: calc(100vh - 10rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.client-pages__hero-tile {
+  width: min(100%, 62rem);
+  height: clamp(300px, 52vh, 520px);
+  cursor: pointer;
+}
+
+/* Open state: the repo shrinks to a compact banner row at the top. */
+.client-pages__banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.client-pages__banner-tile {
+  flex: 0 0 auto;
+  width: clamp(11rem, 32vw, 18rem);
+  height: clamp(4.5rem, 11vw, 7rem);
+}
+
+.client-pages__banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.client-pages__repo {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The page list slides up from beneath the banner. */
+.client-pages__drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 52rem;
+  width: 100%;
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+.client-pages__drawer--open {
+  animation: client-pages-rise calc(0.45s * var(--speed)) var(--ease-glide) forwards;
+}
+
+@keyframes client-pages-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.client-pages__drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.client-pages__back {
+  flex: 0 0 auto;
+}
+
+/* Each page: a glass card row, rising in with a per-item stagger. */
+.client-pages__card {
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow calc(0.2s * var(--speed)) var(--ease-soft), transform calc(0.2s * var(--speed)) var(--ease-soft),
+    background calc(0.2s * var(--speed)) var(--ease-soft);
+  opacity: 0;
+  transform: translateY(16px);
+  animation: client-pages-card-rise calc(0.4s * var(--speed)) var(--ease-soft) forwards;
+  animation-delay: calc(var(--i, 0) * calc(60ms * var(--speed)));
+}
+
+.client-pages__card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  background: var(--glass-bg-strong);
+}
+
+@keyframes client-pages-card-rise {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.client-pages__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+/* Responsive: stack the banner text under the tile. */
+@media (max-width: 700px) {
+  .client-pages__banner {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .client-pages__banner-tile {
+    width: 100%;
+  }
+
+  .client-pages__banner-text {
+    align-items: center;
+  }
+
+  .client-pages__hero {
+    min-height: calc(100vh - 6rem);
+  }
+
+  .client-pages__drawer-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Reduced motion: no transforms, no animations — everything appears
+   in place immediately. */
+@media (prefers-reduced-motion: reduce) {
+  .client-pages__drawer,
+  .client-pages__drawer--open {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .client-pages__card {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .client-pages__card:hover {
+    transform: none;
+  }
+}

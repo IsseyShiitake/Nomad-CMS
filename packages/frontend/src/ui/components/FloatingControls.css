@@ -1,0 +1,130 @@
+/* Floating glass pill hosting the language + theme toggles on the
+   intro/login/OAuth-callback screens — CONCEPT A "LUMEN".
+
+   Scoping note: `.lang-toggle` and `.theme-toggle` also appear in
+   ui/layout/Header.tsx, which is out of scope for this phase. Every rule
+   here therefore carries a `.floating-controls` ancestor — it wins the
+   cascade against styles/global.css on specificity rather than on source
+   order (not guaranteed, since this stylesheet rides in on a lazy chunk),
+   and it cannot restyle the header's copies.
+
+   This is the one place Lumen keeps real glass. Everywhere else a surface
+   is solid porcelain; reserving blur + translucency for floating chrome is
+   what makes it read as a material decision instead of a default. */
+
+.floating-controls {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: var(--lm-r-pill);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  border: 1px solid var(--lm-edge);
+  box-shadow:
+    inset 0 1px 0 var(--lm-rim),
+    var(--lm-shadow-2);
+}
+
+:root[data-theme='dark'] .floating-controls {
+  background: var(--glass-bg);
+  border-color: var(--lm-edge);
+  box-shadow:
+    inset 0 1px 0 var(--lm-rim),
+    var(--lm-shadow-2);
+}
+
+/* --- Language segmented control ------------------------------------ */
+
+.floating-controls .lang-toggle {
+  display: inline-flex;
+  border: 1px solid var(--lm-edge);
+  border-radius: var(--lm-r-pill);
+  overflow: hidden;
+  background: transparent;
+}
+
+.floating-controls .lang-toggle__btn {
+  padding: 0.3rem 0.72rem;
+  border: none;
+  background: transparent;
+  color: var(--lm-ink-muted);
+  font-family: var(--lm-font-ui);
+  font-size: var(--lm-step--2);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background calc(var(--lm-t-micro) * var(--speed)) var(--lm-ease-out),
+    color calc(var(--lm-t-micro) * var(--speed)) var(--lm-ease-out);
+}
+
+.floating-controls .lang-toggle__btn + .lang-toggle__btn {
+  border-left: 1px solid var(--lm-edge);
+}
+
+.floating-controls .lang-toggle__btn:hover {
+  background: var(--lm-iris-tint);
+  color: var(--lm-ink);
+}
+
+.floating-controls .lang-toggle__btn--active {
+  background: var(--lm-iris);
+  color: #fff;
+}
+
+:root[data-theme='dark'] .floating-controls .lang-toggle__btn--active {
+  color: #14102a;
+}
+
+.floating-controls .lang-toggle__btn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--lm-iris-ring);
+}
+
+/* --- Theme disc ----------------------------------------------------- */
+
+/* Keeps its fixed black & white contrast disc with the diagonal seam — it
+   is a literal picture of the two themes and intentionally does NOT adapt
+   to the active palette. Only the rim and shadow join the Lumen system.
+
+   The rim lives in an inset ring rather than a border: inset shadows
+   rasterize with the background disc, so fractional device pixel ratios
+   cannot seat the ring off the gradient edge as grey crescents. */
+.floating-controls .theme-toggle {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  /* from 45deg puts the colour boundary on the NE↔SW diameter, so the
+     seam reads as a diagonal (bottom-left → top-right). */
+  background: conic-gradient(from 45deg, #111 0 50%, #fff 0);
+  cursor: pointer;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.26),
+    var(--lm-shadow-1);
+  transition: box-shadow calc(var(--lm-t-micro) * var(--speed)) var(--lm-ease-out),
+    transform calc(var(--lm-t-micro) * var(--speed)) var(--lm-ease-out);
+}
+
+.floating-controls .theme-toggle:hover {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.26),
+    var(--lm-shadow-2);
+  transform: translateY(-1px);
+}
+
+/* The global focus rule replaces the whole box-shadow, which would drop
+   the disc's rim — re-assert the ring alongside the focus outline. */
+.floating-controls .theme-toggle:focus-visible {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.26),
+    0 0 0 3px var(--lm-iris-ring);
+}

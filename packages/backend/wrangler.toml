@@ -1,0 +1,84 @@
+# Cloudflare Worker configuration.
+#
+# The main entry point is the Worker's fetch handler in
+# src/index.ts. Environment variable names are defined here and
+# values are provided via .dev.vars (local) and the Cloudflare
+# dashboard / secrets (production).
+#
+# IMPORTANT: GitHub credentials are secrets — they are only ever
+# bound to the Worker, never exposed to the frontend.
+
+name = "nomad-cms"
+main = "src/index.ts"
+compatibility_date = "2026-08-20"
+
+# KV namespace (binding SESSION_KV; namespace title SESSIONS_NOMAD) for
+# session tokens and client accesses.
+# Fresh namespaces for this worker (SESSIONS_NOMAD) — fully isolated from
+# any other deployment's sessions, client accesses, and connections.
+#   npx wrangler kv namespace create SESSIONS_NOMAD
+#   npx wrangler kv namespace create SESSIONS_NOMAD --preview
+[[kv_namespaces]]
+binding = "SESSION_KV"
+id = "3800adeb915644db964c0ad338f411a8"
+preview_id = "dc7b63bd952a474796cdce42add0987d"
+
+# Static assets serving the built frontend (Workers Static Assets).
+# Only /api/* reaches the Worker script (run_worker_first); everything
+# else is served from the frontend build, with unmatched navigation
+# requests falling back to /index.html for SPA routing.
+[assets]
+directory = "../frontend/dist"
+not_found_handling = "single-page-application"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+# Public variables. The GitHub Client ID is public by design;
+# the OAuth redirect URI routes back to the frontend.
+# The redirect URI must match the GitHub OAuth App's registered callback
+# exactly (the token exchange sends the same value).
+[vars]
+GITHUB_REDIRECT_URI = "https://nomad-cms.isseyshiitake.workers.dev/auth/callback"
+# The Nomad CMS GitHub OAuth App's public client id. Its matching secret is
+# bound via `wrangler secret put GITHUB_CLIENT_SECRET` (never in this file).
+GITHUB_CLIENT_ID = "Ov23liMDKdzRyJ4o1FaJ"
+# Platform OAuth login ("Log in with Cloudflare/Vercel" in Settings).
+# Client ids are public; matching secrets are bound via wrangler secret put:
+#   wrangler secret put CLOUDFLARE_OAUTH_CLIENT_SECRET
+#   wrangler secret put VERCEL_OAUTH_CLIENT_SECRET
+# Leave a client id EMPTY to disable that platform's login button.
+# Cloudflare client registration (dash.cloudflare.com → Manage Account →
+# OAuth clients): name "Nomad CMS", Authorization Code + Refresh Token,
+# client_secret_post, redirect URL = CLOUDFLARE_OAUTH_REDIRECT_URI below,
+# scopes pages.read pages.write account.read offline_access (dot-separated!).
+# Vercel app registration (vercel.com → Account Settings → Create App):
+# callback URL = VERCEL_OAUTH_REDIRECT_URI below. Vercel mandates PKCE S256.
+CLOUDFLARE_OAUTH_CLIENT_ID = ""
+CLOUDFLARE_OAUTH_REDIRECT_URI = "https://nomad-cms.isseyshiitake.workers.dev/auth/platform/cloudflare/callback"
+VERCEL_OAUTH_CLIENT_ID = ""
+VERCEL_OAUTH_REDIRECT_URI = "https://nomad-cms.isseyshiitake.workers.dev/auth/platform/vercel/callback"
+# Dev via the Vite proxy is same-origin (leave unset); in production set
+# this to the deployed frontend origin(s), e.g. "https://cms.example.com".
+# ALLOWED_ORIGINS = "https://cms.example.com"
+# Operator pinning: the GitHub login allowed to hold the admin role. When
+# empty, the FIRST GitHub login claims the slot (write-once, KV key
+# operator:login) and every other login gets 403 instance_locked. Set your
+# own login explicitly to remove the first-login race.
+OPERATOR_LOGIN = "IsseyShiitake"
+
+# SECRET variables (per priority #4): credentials are never
+# stored in this file. Provide values in .dev.vars locally:
+#   GITHUB_CLIENT_SECRET=xxx
+#   SESSION_ENCRYPTION_KEY=xxx   # base64 or hex of 32 bytes (AES-256)
+#   CLOUDFLARE_OAUTH_CLIENT_SECRET=xxx
+#   VERCEL_OAUTH_CLIENT_SECRET=xxx
+# and set them via `wrangler secret put` in production:
+#   wrangler secret put GITHUB_CLIENT_SECRET
+#   wrangler secret put SESSION_ENCRYPTION_KEY
+#   wrangler secret put CLOUDFLARE_OAUTH_CLIENT_SECRET
+#   wrangler secret put VERCEL_OAUTH_CLIENT_SECRET
+# Expected in the Worker env but intentionally not listed here:
+#   GITHUB_CLIENT_SECRET
+#   SESSION_ENCRYPTION_KEY
+#   CLOUDFLARE_OAUTH_CLIENT_SECRET
+#   VERCEL_OAUTH_CLIENT_SECRET

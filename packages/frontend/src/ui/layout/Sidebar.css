@@ -1,0 +1,30 @@
+/* Sidebar — brand mark chip beside the brand name. The brand text
+   itself (.sidebar__brand) is styled in styles/global.css; this file
+   only adds the flex row + the mark chip. */
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.sidebar__brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.125rem;
+  font-weight: 400;
+  line-height: 1;
+  /* Lumen: the mark is an iris monogram on its own tint — the drawer is
+     porcelain now, so the old white-on-violet chip would float. */
+  color: var(--color-primary);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius, 10px);
+  box-shadow: inset 0 1px 0 var(--glass-border, rgba(255, 255, 255, 0.75));
+}

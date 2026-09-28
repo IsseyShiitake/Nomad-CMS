@@ -1,0 +1,2079 @@
+@import './theme.css';
+
+:root {
+  color-scheme: light;
+  /* LUMEN. Every shipped name below is re-pointed at the concept's tokens
+     (styles/theme.css) rather than holding its own value, so the whole app
+     reads one palette from one place. Component rules were never the source
+     of truth; these are. */
+  --color-bg: var(--lm-field-mid);
+  --color-surface: var(--lm-porcelain);
+  --color-text: var(--lm-ink);
+  --color-text-muted: var(--lm-ink-muted);
+  --color-border: var(--lm-edge);
+  --color-primary: var(--lm-iris);
+  --color-primary-hover: var(--lm-iris-deep);
+  --color-accent-soft: var(--lm-iris-tint);
+  /* The drawer is a solid porcelain panel in Lumen, not a dark violet slab:
+     one material for every surface that holds content. */
+  --color-sidebar-bg: var(--lm-porcelain);
+  --color-sidebar-text: var(--lm-ink-muted);
+  --color-sidebar-active: var(--lm-ink);
+  /* Semantic surfaces for status/badge colors (see the dark block). */
+  --color-on-primary: #ffffff;
+  --color-hover-border: var(--lm-iris-ring);
+  --help-hover-bg: var(--lm-iris-tint);
+  --danger-text: var(--lm-danger);
+  --danger-soft-bg: var(--lm-danger-tint);
+  --danger-soft-border: rgba(176, 58, 84, 0.28);
+  --danger-soft-hover: rgba(176, 58, 84, 0.18);
+  --warn-text: #8a5a17;
+  --warn-soft-bg: #f8eeda;
+  --warn-soft-border: #e8d3ac;
+  --ok-chip-bg: #e2efe6;
+  --ok-chip-text: #3f7d5f;
+  --badge-h1-bg: var(--lm-iris-tint);
+  --badge-h1-text: var(--lm-iris-deep);
+  --badge-h2-bg: #e4edf5;
+  --badge-h2-text: #47688f;
+  --badge-img-bg: #f7ead6;
+  --badge-img-text: #96662a;
+  --backdrop: rgba(36, 26, 46, 0.32);
+  --shadow-sm: var(--lm-shadow-1);
+  --shadow-md: var(--lm-shadow-2);
+  --shadow-lg: var(--lm-shadow-3);
+  --radius: var(--lm-r-sm);
+  --radius-lg: var(--lm-r-lg);
+  --focus-ring: 0 0 0 3px var(--lm-iris-ring);
+  --text-xs: var(--lm-step--2);
+  --text-sm: var(--lm-step--1);
+  --text-base: var(--lm-step-0);
+  --text-lg: var(--lm-step-1);
+}
+
+/* Dark theme: the same re-pointing against Lumen's night palette. Driven by
+   <html data-theme="dark"> (src/services/theme.tsx). The previewed site
+   (iframe) keeps its own colors in both themes. */
+:root[data-theme='dark'] {
+  --color-bg: var(--lm-field-mid);
+  --color-surface: var(--lm-porcelain);
+  --color-text: var(--lm-ink);
+  --color-text-muted: var(--lm-ink-muted);
+  --color-border: var(--lm-edge);
+  --color-primary: var(--lm-iris);
+  --color-primary-hover: var(--lm-iris-deep);
+  --color-accent-soft: var(--lm-iris-tint);
+  --color-sidebar-bg: var(--lm-porcelain);
+  --color-sidebar-text: var(--lm-ink-muted);
+  --color-sidebar-active: var(--lm-ink);
+  --shadow-sm: var(--lm-shadow-1);
+  --shadow-md: var(--lm-shadow-2);
+  --shadow-lg: var(--lm-shadow-3);
+  --focus-ring: 0 0 0 3px var(--lm-iris-ring);
+  --color-on-primary: #14102a;
+  --color-hover-border: var(--lm-iris-ring);
+  --help-hover-bg: var(--lm-iris-tint);
+  --danger-text: var(--lm-danger);
+  --danger-soft-bg: var(--lm-danger-tint);
+  --danger-soft-border: rgba(231, 154, 171, 0.3);
+  --danger-soft-hover: rgba(231, 154, 171, 0.2);
+  --warn-text: #f2cf8f;
+  --warn-soft-bg: #362b15;
+  --warn-soft-border: #5e4b22;
+  --ok-chip-bg: #16302a;
+  --ok-chip-text: #8fd6b4;
+  --badge-h1-bg: var(--lm-iris-tint);
+  --badge-h1-text: var(--lm-iris);
+  --badge-h2-bg: #1e2c42;
+  --badge-h2-text: #a3c4e6;
+  --badge-img-bg: #3a2d18;
+  --badge-img-text: #eecb92;
+  --backdrop: rgba(5, 4, 12, 0.55);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Native form controls follow the active theme (checkbox/radio keep their
+   accent-color rendering; the previewed site in the iframe is untouched).
+   :where() zeroes the chain's specificity — at (0,4,1) it outranked every
+   class-scoped input rule (search pills, login fields, settings inputs),
+   which all fell back to this radius and never rendered as authored. */
+input:where(:not([type='checkbox']):not([type='radio']):not([type='submit']):not([type='button'])),
+textarea,
+select {
+  background: var(--glass-bg-strong);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-ui);
+  /* Solid fallback — the ambient background layer paints the gradient. */
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+
+/* Consistent, accessible focus for every interactive element. */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Layout — sits above the fixed ambient background layer (z-index 0). */
+.app-layout {
+  position: relative;
+  z-index: 1;
+  display: block;
+  min-height: 100vh;
+}
+
+.app-layout__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-layout__content {
+  flex: 1;
+  padding: 2rem;
+}
+
+/* Sidebar (off-canvas drawer, closed by default) — a solid porcelain panel.
+   Lumen gives the drawer the same material as every other content surface
+   instead of the old dark-violet slab: one material language app-wide, and
+   the ambient field stays visible around it rather than being blocked by a
+   second dark rectangle. The right edge carries a hairline and the panel a
+   wide ambient shadow so it reads as lifted off the field. */
+.sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 260px;
+  z-index: 40;
+  background: var(--color-sidebar-bg);
+  border-right: 1px solid var(--color-border);
+  box-shadow:
+    inset 1px 0 0 var(--glass-border),
+    var(--shadow-lg);
+  color: var(--color-sidebar-text);
+  padding: 1rem;
+  overflow-y: auto;
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition: transform calc(0.25s * var(--speed)) var(--ease-glide), visibility calc(0.25s * var(--speed));
+}
+
+.sidebar--open {
+  transform: none;
+  visibility: visible;
+}
+
+.sidebar__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: var(--backdrop);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.sidebar__brand {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.005em;
+  font-size: var(--text-lg);
+  color: var(--color-sidebar-active);
+  padding: 0.5rem 0.75rem 0.75rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.sidebar__nav {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sidebar__nav li {
+  margin-bottom: 0.25rem;
+}
+
+.sidebar__link {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  color: var(--color-sidebar-text);
+  text-decoration: none;
+  transition: background calc(0.15s * var(--speed)) var(--ease-soft), color calc(0.15s * var(--speed));
+}
+
+.sidebar__link:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-sidebar-active);
+}
+
+/* The active entry is the one place the iris is spent as a fill outside a
+   primary button — navigation state is worth the accent. */
+.sidebar__link--active {
+  background: linear-gradient(178deg, var(--lm-iris-lift) 0%, var(--lm-iris) 52%, var(--lm-iris-deep) 100%);
+  color: var(--color-on-primary);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    var(--lm-shadow-iris);
+}
+
+:root[data-theme='dark'] .sidebar__link--active {
+  color: #14102a;
+}
+
+/* Header — translucent glass bar floating over the ambient background. */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.875rem 2rem;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--color-border);
+  /* The inset top line is the rim light: it is what makes a frosted bar
+     read as a surface catching the key light rather than as a grey strip. */
+  box-shadow:
+    inset 0 1px 0 var(--glass-border),
+    var(--shadow-sm);
+}
+
+.header__title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  font-size: var(--text-lg);
+}
+
+.header__user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.header__username {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.header__guest {
+  color: var(--color-text-muted);
+}
+
+.header__client-link {
+  color: var(--color-primary);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.header__client-link:hover {
+  text-decoration: underline;
+}
+
+/* Lead group: the title sits immediately after the menu toggle, so the
+   app name reads as one left-anchored block instead of floating between
+   the toggle and the user actions. */
+.header__lead {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.header__menu-toggle {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 50%; /* square box + 50% = a circle on hover, not a pill */
+  cursor: pointer;
+  color: var(--color-text);
+  transition: background calc(0.15s * var(--speed));
+}
+
+.header__menu-toggle:hover {
+  background: var(--color-accent-soft);
+}
+
+/* Language toggle (segmented glass pill) */
+.lang-toggle {
+  display: inline-flex;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--glass-bg);
+}
+
+.lang-toggle__btn {
+  padding: 0.3rem 0.75rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background calc(0.15s * var(--speed)) var(--ease-soft), color calc(0.15s * var(--speed));
+}
+
+.lang-toggle__btn + .lang-toggle__btn {
+  border-left: 1px solid var(--glass-border);
+}
+
+.lang-toggle__btn:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.lang-toggle__btn--active {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+/* Theme toggle: fixed black & white contrast disc with a diagonal seam —
+   identical in both themes (it intentionally does NOT adapt to the active
+   palette). */
+.theme-toggle {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  /* from 45deg puts the color boundary on the NE↔SW diameter, so the
+     seam reads as a diagonal (bottom-left → top-right) instead of the
+     default vertical split. */
+  background: conic-gradient(from 45deg, #111 0 50%, #fff 0);
+  cursor: pointer;
+  /* The rim lives in an inset ring rather than a border: inset shadows
+     rasterize with the background disc, so fractional device pixel ratios
+     can no longer seat the ring off the gradient edge as grey crescents. */
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.28), var(--shadow-sm);
+  transition: box-shadow calc(0.15s * var(--speed)) var(--ease-soft), transform calc(0.15s * var(--speed));
+}
+
+.theme-toggle:hover {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.28), var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+/* The global focus rule replaces the whole box-shadow, which would drop the
+   disc's rim — re-assert the ring alongside the focus outline. */
+.theme-toggle:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.28), var(--focus-ring);
+}
+
+/* Buttons — pill, glass by default; primary is a violet gradient. */
+.btn {
+  display: inline-block;
+  padding: 0.5rem 1.125rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--glass-bg-strong);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: background calc(0.15s * var(--speed)) var(--ease-soft), border-color calc(0.15s * var(--speed)) var(--ease-soft),
+    box-shadow calc(0.15s * var(--speed)) var(--ease-soft), transform calc(0.15s * var(--speed)) var(--ease-soft);
+}
+
+.btn:hover {
+  background: var(--color-accent-soft);
+  border-color: var(--color-hover-border);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  filter: saturate(0.45);
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Primary: the iris, spent as a vertical gradient with an inner top
+   highlight — the same fill the login screen uses, so a primary button is
+   recognisable anywhere in the app. */
+.btn--primary {
+  background: linear-gradient(178deg, var(--lm-iris-lift) 0%, var(--lm-iris) 52%, var(--lm-iris-deep) 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    var(--lm-shadow-iris);
+}
+
+:root[data-theme='dark'] .btn--primary {
+  color: #14102a;
+}
+
+.btn--primary:hover {
+  background: linear-gradient(178deg, var(--lm-iris) 0%, var(--lm-iris-deep) 100%);
+  border-color: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 4px 10px rgba(91, 75, 214, 0.28),
+    0 20px 38px -14px rgba(91, 75, 214, 0.5);
+  transform: translateY(-1px);
+}
+
+:root[data-theme='dark'] .btn--primary:hover {
+  background: linear-gradient(178deg, var(--lm-iris-lift) 0%, var(--lm-iris) 100%);
+}
+
+.btn--primary:disabled {
+  transform: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn--danger {
+  background: linear-gradient(178deg, #c4566d 0%, var(--lm-danger) 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    var(--shadow-sm);
+}
+
+:root[data-theme='dark'] .btn--danger {
+  color: #2a0d14;
+}
+
+.btn--danger:hover {
+  background: linear-gradient(178deg, #b04a5f 0%, #8f3448 100%);
+  border-color: transparent;
+}
+
+:root[data-theme='dark'] .btn--danger:hover {
+  background: linear-gradient(178deg, #f0a7b6 0%, var(--lm-danger) 100%);
+}
+
+/* Header actions */
+.header__button {
+  padding: 0.375rem 0.875rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--glass-bg);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background calc(0.15s * var(--speed)) var(--ease-soft), border-color calc(0.15s * var(--speed)) var(--ease-soft),
+    box-shadow calc(0.15s * var(--speed)) var(--ease-soft), transform calc(0.15s * var(--speed)) var(--ease-soft);
+}
+
+.header__button:hover {
+  background: var(--color-accent-soft);
+  border-color: var(--color-hover-border);
+}
+
+.header__button--primary {
+  background: linear-gradient(178deg, var(--lm-iris-lift) 0%, var(--lm-iris) 52%, var(--lm-iris-deep) 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    var(--lm-shadow-iris);
+}
+
+:root[data-theme='dark'] .header__button--primary {
+  color: #14102a;
+}
+
+.header__button--primary:hover {
+  background: linear-gradient(178deg, var(--lm-iris) 0%, var(--lm-iris-deep) 100%);
+  border-color: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    var(--lm-shadow-2);
+  transform: translateY(-1px);
+}
+
+:root[data-theme='dark'] .header__button--primary:hover {
+  background: linear-gradient(178deg, var(--lm-iris-lift) 0%, var(--lm-iris) 100%);
+}
+
+.header__help {
+  color: var(--color-primary);
+  border-color: transparent;
+  background: var(--color-accent-soft);
+}
+
+.header__help:hover {
+  background: var(--help-hover-bg);
+  border-color: transparent;
+}
+
+/* Auth card — glass panel above the ambient background. */
+.auth-card {
+  position: relative;
+  z-index: 1;
+  margin: 0 auto;
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 2.25rem; /* unified with .login-card — one card padding value */
+  max-width: 480px;
+}
+
+.auth-card h2 {
+  margin-top: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.auth-card__client-link {
+  display: inline-block;
+  margin-top: 1rem;
+  color: var(--color-primary);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.auth-card__client-link:hover {
+  text-decoration: underline;
+}
+
+/* Client login page (standalone, centered) — ambient gradient shows through. */
+.login-page {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: transparent;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 26rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 2.25rem;
+}
+
+.login-card h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.login-card__subtitle {
+  margin: 0 0 0.5rem;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.login-card__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+/* .login-card prefix ties the generic input:not():not() rule (0,2,1) and
+   wins by source order — without it the field rule below loses the
+   cascade and stays translucent. */
+.login-card .login-card__field input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+  /* Explicitly solid, not the 55%-glass of the generic rule: the typed
+     access ID must not sit on a see-through field where the ambient
+     background bleeds under the text. */
+  background: var(--color-surface);
+}
+
+/* Card (reusable) — glass tile. */
+.card {
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem;
+  transition: box-shadow calc(0.2s * var(--speed)) var(--ease-soft), transform calc(0.2s * var(--speed));
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* Page header (title + actions) */
+.page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.page__header h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+/* Centered list pages (/repositories and repository contents): the block
+   (title + toolbar + cards) is centered in the viewport; card internals
+   stay left-aligned. */
+.page--centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.page--centered > * {
+  width: 100%;
+}
+
+.page--centered .page__header h2 {
+  text-align: center;
+}
+
+.page--centered > h2,
+.page--centered .breadcrumb {
+  text-align: center;
+}
+
+/* Page states */
+.page-status {
+  color: var(--color-text-muted);
+}
+
+/* Error banner (reusable) — warm danger glass. */
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--danger-text);
+  background: var(--danger-soft-bg);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--danger-soft-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 0.75rem 1rem;
+}
+
+.error-banner__message {
+  flex: 1;
+}
+
+.error-banner__dismiss {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  color: var(--danger-text);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+}
+
+/* Spinner (reusable) — three soft pulsing dots. */
+.spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  color: var(--color-text-muted);
+}
+
+.spinner__indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1875rem;
+}
+
+.spinner__dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--color-primary);
+  opacity: 0.35;
+  animation: spinner-pulse 1s var(--ease-soft) infinite;
+}
+
+.spinner__dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.spinner__dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes spinner-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner__dot {
+    animation: none;
+    opacity: 0.8;
+  }
+}
+
+.spinner__label {
+  font-size: var(--text-sm);
+}
+
+/* Breadcrumb */
+.breadcrumb {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.breadcrumb a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+/* Repository toolbar */
+.repo-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  max-width: 720px;
+}
+
+.repo-toolbar__search {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--text-sm);
+  background: var(--glass-bg-strong);
+}
+
+.repo-toolbar__filters {
+  display: inline-flex;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--glass-bg);
+}
+
+.repo-toolbar__filter {
+  padding: 0.5rem 0.875rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background calc(0.15s * var(--speed)) var(--ease-soft), color calc(0.15s * var(--speed));
+}
+
+.repo-toolbar__filter + .repo-toolbar__filter {
+  border-left: 1px solid var(--glass-border);
+}
+
+.repo-toolbar__filter:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.repo-toolbar__filter--active {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.pages-card {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem;
+  transition: box-shadow calc(0.2s * var(--speed)) var(--ease-soft), transform calc(0.2s * var(--speed));
+}
+
+.pages-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.page-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.page-list li {
+  padding: 0.5rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  transition: background calc(0.15s * var(--speed));
+}
+
+.page-list li:hover {
+  background: var(--color-accent-soft);
+}
+
+.page-list li:last-child {
+  border-bottom: none;
+}
+
+.page-list a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.page-list a:hover {
+  text-decoration: underline;
+}
+
+.page-list__item {
+  display: flex;
+  flex-direction: column;
+}
+
+.page-list__path {
+  font-family: monospace;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.pages-toolbar__search {
+  width: 100%;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--text-sm);
+  background: var(--glass-bg);
+}
+
+/* File navigation */
+.file-nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.file-nav__up {
+  padding: 0.25rem 0.875rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--glass-bg);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  transition: background calc(0.15s * var(--speed));
+}
+
+.file-nav__up:hover {
+  background: var(--color-accent-soft);
+}
+
+.file-nav__path {
+  font-family: monospace;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.file-nav__dir {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.file-nav__dir:hover {
+  color: var(--color-primary);
+}
+
+/* Not found — glass panel above the ambient background. */
+.not-found {
+  position: relative;
+  z-index: 1;
+  max-width: 720px;
+  margin: 0 auto;
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 2rem;
+  text-align: center;
+}
+
+.not-found h2 {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+/* Editor */
+.editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.5rem;
+}
+
+.editor__panel {
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem;
+}
+
+.editor__panel h3 {
+  margin-top: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.editor-page__message {
+  font-size: var(--text-sm);
+}
+
+.editor-page__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.editor-page__undo {
+  padding: 0.5rem 1.125rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--glass-bg);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background calc(0.15s * var(--speed)) var(--ease-soft), border-color calc(0.15s * var(--speed)) var(--ease-soft);
+}
+
+.editor-page__undo:hover {
+  background: var(--color-accent-soft);
+  border-color: var(--color-hover-border);
+}
+
+.editor-page__undo:disabled {
+  opacity: 0.6;
+  filter: saturate(0.45);
+  cursor: not-allowed;
+}
+
+.editor-page__save {
+  padding: 0.5rem 1.25rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: linear-gradient(178deg, var(--lm-iris-lift) 0%, var(--lm-iris) 52%, var(--lm-iris-deep) 100%);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    var(--lm-shadow-iris);
+  transition: background calc(0.15s * var(--speed)) var(--ease-soft), box-shadow calc(0.15s * var(--speed)) var(--ease-soft),
+    transform calc(0.15s * var(--speed)) var(--ease-soft);
+}
+
+:root[data-theme='dark'] .editor-page__save {
+  color: #14102a;
+}
+
+.editor-page__save:hover {
+  background: linear-gradient(178deg, var(--lm-iris) 0%, var(--lm-iris-deep) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    var(--lm-shadow-2);
+  transform: translateY(-1px);
+}
+
+:root[data-theme='dark'] .editor-page__save:hover {
+  background: linear-gradient(178deg, var(--lm-iris-lift) 0%, var(--lm-iris) 100%);
+}
+
+.editor-page__save:disabled {
+  opacity: 0.6;
+  filter: saturate(0.45);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.editor-page__unsaved {
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: var(--warn-soft-bg);
+  border: 1px solid var(--warn-soft-border);
+  color: var(--warn-text);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.editor__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.editor-element {
+  background: var(--glass-bg);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  transition:
+    border-color calc(0.15s * var(--speed)) var(--ease-soft),
+    box-shadow calc(0.15s * var(--speed)) var(--ease-soft),
+    transform calc(0.15s * var(--speed)) var(--ease-soft);
+}
+
+.editor-element:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+/* Row accents take their hue from the badge tokens, so a row and its chip
+   always agree — the accents are the badge colours, not a second palette. */
+.editor-element:has(.badge--h1) {
+  border-left-color: var(--badge-h1-text);
+}
+
+.editor-element:has(.badge--h2) {
+  border-left-color: var(--badge-h2-text);
+}
+
+.editor-element:has(.badge--p) {
+  border-left-color: var(--ok-chip-text);
+}
+
+.editor-element:has(.badge--img) {
+  border-left-color: var(--badge-img-text);
+}
+
+/* Active row (preview click target) — double-class specificity so it beats
+   the badge :has() border rules above. */
+.editor-element.editor-element--active {
+  border-color: var(--color-primary);
+  border-left-color: var(--color-primary);
+  background: var(--color-accent-soft);
+}
+
+.editor-element__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.editor-element__type {
+  flex: 0 0 auto;
+  font-family: monospace;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Element type badges (beacons) — pill chips, glassier tint. */
+.badge {
+  display: inline-block;
+  padding: 0.125rem 0.625rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge--h1 {
+  background: var(--badge-h1-bg);
+  color: var(--badge-h1-text);
+}
+
+.badge--h2 {
+  background: var(--badge-h2-bg);
+  color: var(--badge-h2-text);
+}
+
+.badge--p {
+  background: var(--ok-chip-bg);
+  color: var(--ok-chip-text);
+}
+
+.badge--img {
+  background: var(--badge-img-bg);
+  color: var(--badge-img-text);
+}
+
+.editor-element__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--glass-bg);
+  font: inherit;
+}
+
+/* Field area below the badge/delete header row. */
+.editor-element__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.editor-element__image-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+/* Auto-growing multi-line content field for text elements. */
+.editor-element__textarea {
+  width: 100%;
+  min-height: 2.5rem;
+  line-height: 1.4;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--glass-bg);
+  font: inherit;
+  resize: none;
+  overflow: hidden;
+}
+
+/* Browse button (opens the hidden native file picker). */
+.editor-element__browse {
+  flex: 0 0 auto;
+  padding: 0.375rem 0.875rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--glass-bg);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background calc(0.15s * var(--speed)) var(--ease-soft), border-color calc(0.15s * var(--speed)) var(--ease-soft);
+}
+
+.editor-element__browse:hover {
+  background: var(--color-accent-soft);
+  border-color: var(--color-primary);
+}
+
+/* Name of the queued image file (or the empty placeholder). */
+.editor-element__filename {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hidden native picker — kept in the DOM so its ref can .click() it. */
+.editor-element__file {
+  display: none;
+}
+
+.editor-element__delete {
+  padding: 0.375rem 0.875rem;
+  border: 1px solid var(--danger-soft-border);
+  border-radius: 999px;
+  background: var(--danger-soft-bg);
+  color: var(--danger-text);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background calc(0.15s * var(--speed));
+}
+
+.editor-element__delete:hover {
+  background: var(--danger-soft-hover);
+}
+
+.editor-element__insert {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.editor-element__insert select {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: var(--text-xs);
+  background: var(--glass-bg);
+}
+
+.editor-element__insert button {
+  padding: 0.25rem 0.875rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--glass-bg);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background calc(0.15s * var(--speed)) var(--ease-soft), border-color calc(0.15s * var(--speed)) var(--ease-soft);
+}
+
+.editor-element__insert button:hover {
+  background: var(--color-accent-soft);
+  border-color: var(--color-primary);
+}
+
+.editor__preview {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  position: sticky;
+  top: 5rem; /* clears the sticky app header (~4rem) + 1rem gap */
+  align-self: start; /* required — grid stretch breaks sticky */
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
+}
+
+.editor__preview-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.editor__preview-header h3 {
+  margin: 0;
+  margin-right: auto;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.editor__highlight {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.editor__highlight input {
+  accent-color: var(--color-primary);
+}
+
+.editor__device {
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--text-sm);
+  background: var(--glass-bg);
+}
+
+.editor__zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.editor__zoom button {
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--glass-bg);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background calc(0.15s * var(--speed)) var(--ease-soft), border-color calc(0.15s * var(--speed)) var(--ease-soft);
+}
+
+.editor__zoom button:hover:not(:disabled) {
+  background: var(--color-accent-soft);
+  border-color: var(--color-primary);
+}
+
+.editor__zoom button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.editor__zoom-value {
+  min-width: 3rem;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Preview frame — paper card holding the client iframe. */
+.editor__preview-frame {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 0.5rem;
+  overflow: auto;
+}
+
+.editor__preview-sizer {
+  margin: 0 auto;
+  /* The website visualizer's corner rounding is enforced HERE, by clip,
+     not by the iframe's own border-radius: a transformed iframe can
+     ignore its radius (top corners rendered square while the bottom
+     looked rounded). 14px on all four corners — rounder than the
+     iframe's own 10px, concentric with the frame's 22px at its
+     0.5rem padding. */
+  border-radius: calc(var(--radius-lg) - 0.5rem);
+  overflow: hidden;
+}
+
+.editor__iframe {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: #fff;
+  display: block;
+}
+
+.editor__preview-legend {
+  margin: 0.5rem 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* Segmented mode toggle in the editor's preview header (beacons vs
+   editable). Historically the scanner panel's toggle — the panel is gone,
+   the editor still rides on these classes. */
+.scanner__toggle {
+  display: inline-flex;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--glass-bg);
+}
+
+.scanner__toggle-btn {
+  padding: 0.375rem 0.875rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background calc(0.15s * var(--speed)) var(--ease-soft), color calc(0.15s * var(--speed));
+}
+
+.scanner__toggle-btn + .scanner__toggle-btn {
+  border-left: 1px solid var(--glass-border);
+}
+
+.scanner__toggle-btn:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.scanner__toggle-btn--active {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+/* Editor page — the workspace fills the viewport: the page itself never
+   scrolls; each column (elements panel, preview) scrolls inside its own
+   box. The header and the save/undo toolbar stay pinned as flex rows. */
+.editor-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 7.5rem); /* sticky header + content padding */
+  min-height: 24rem;
+}
+
+.editor-page__toolbar {
+  flex: 0 0 auto;
+}
+
+.editor-page .editor {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.editor-page .editor__panel {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* In the locked layout the preview fills the row (sticky-in-page is
+   meaningless when the page cannot scroll). */
+.editor-page .editor__preview {
+  position: static;
+  top: auto;
+  align-self: stretch;
+  max-height: none;
+}
+
+/* Modal (reusable) — violet-tinted blurred backdrop + glass panel. */
+.modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--backdrop);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.modal {
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 560px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.modal__close {
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  transition: color calc(0.15s * var(--speed)) var(--ease-soft);
+}
+
+.modal__close:hover {
+  color: var(--color-text);
+}
+
+.modal__body {
+  padding: 1.25rem 1.5rem;
+  overflow-y: auto;
+}
+
+.modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.625rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Help center */
+.help-center__tabs {
+  display: inline-flex;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+  background: var(--glass-bg);
+}
+
+.help-center__tab {
+  padding: 0.375rem 0.875rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background calc(0.15s * var(--speed)) var(--ease-soft), color calc(0.15s * var(--speed));
+}
+
+.help-center__tab + .help-center__tab {
+  border-left: 1px solid var(--glass-border);
+}
+
+.help-center__tab:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.help-center__tab--active {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.help-center__steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.help-center__step-title {
+  display: block;
+  font-weight: 600;
+}
+
+.help-center__step-body {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.help-center__glossary {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.help-center__term {
+  font-weight: 600;
+}
+
+.help-center__def {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Settings: client access management */
+.settings-card {
+  margin-bottom: 1.5rem;
+  max-width: 1100px;
+}
+
+.settings-card h4 {
+  margin-top: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+/* Settings: hosting-platform rows (OAuth login above the token form). */
+.hosting-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.hosting-row__platform {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.hosting-row__options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hosting-row__login {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.hosting-row__alt {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.hosting-row__form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.hosting-row__state {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.hosting-row__note {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.hosting-input {
+  min-width: 10rem;
+}
+
+.settings-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.settings-form__field {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end; /* the Language field's pill is shorter than
+                                 the inputs — bottom-align controls so the
+                                 row shares one baseline (align-items on the
+                                 form is already flex-end) */
+  gap: 0.25rem;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  min-width: 220px;
+}
+
+.settings-form__field input,
+.settings-form__field select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+  background: var(--glass-bg);
+}
+
+.settings-form__field select {
+  /* Native selects compute a shorter internal line box than text inputs
+     (35px vs 38px at --text-sm), which knocked the create-form row's
+     label tops off their shared baseline. Pin the select to the input's
+     exact box: line-height 1.5 + 0.5rem vertical padding + 1px borders. */
+  height: calc(var(--text-sm) * 1.5 + 1rem + 2px);
+}
+
+.settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.settings-table th,
+.settings-table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.settings-table th {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--kicker-tracking);
+}
+
+.settings-table code {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.0625rem 0.375rem;
+  font-size: var(--text-xs);
+}
+
+.settings-table__actions {
+  display: flex;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.settings-table__actions .btn {
+  padding: 0.25rem 0.75rem;
+  font-size: var(--text-xs);
+}
+
+.settings-status {
+  display: inline-block;
+  padding: 0.125rem 0.625rem;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings-status--active {
+  background: var(--ok-chip-bg);
+  color: var(--ok-chip-text);
+}
+
+.settings-status--revoked {
+  background: var(--danger-soft-bg);
+  color: var(--danger-text);
+}
+
+/* One-time credentials dialog */
+.credentials__intro {
+  margin-top: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.credentials__row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.credentials__label {
+  flex: 0 0 7rem;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-muted);
+}
+
+.credentials__value {
+  flex: 1;
+  background: var(--glass-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.375rem 0.625rem;
+  font-size: var(--text-sm);
+  word-break: break-all;
+}
+
+/* Confirm dialog (reusable) — sits above the modal overlay. */
+.confirm-dialog__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 52;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--backdrop);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.confirm-dialog {
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 420px;
+}
+
+.confirm-dialog__title {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.confirm-dialog__message {
+  color: var(--color-text-muted);
+  margin-bottom: 1.25rem;
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.625rem;
+}
+
+@media (max-width: 900px) {
+  .editor {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stacked columns cannot share a viewport height — return to natural
+     page flow on small screens. */
+  .editor-page {
+    height: auto;
+    min-height: 0;
+  }
+
+  .editor__preview {
+    position: static;
+    top: auto;
+    align-self: auto;
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+/* Responsive layout */
+@media (max-width: 768px) {
+  .app-layout__content {
+    padding: 1.25rem;
+  }
+
+  .header {
+    padding: 0.75rem 1.25rem;
+    flex-wrap: wrap;
+  }
+
+  .header__user {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .header__client-link {
+    display: none;
+  }
+
+  .file-nav {
+    flex-wrap: wrap;
+  }
+
+  .settings-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
+/* Publish panel — per-platform chips with their deployment state. */
+.publish-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.publish-panel h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.publish-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.publish-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--glass-border);
+  border-left: 3px solid var(--color-text-muted);
+  border-radius: var(--radius);
+  background: var(--glass-bg);
+  font-size: var(--text-sm);
+}
+
+.publish-chip__name {
+  font-weight: 600;
+}
+
+.publish-chip__state {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.publish-chip__url {
+  margin-left: auto;
+  color: var(--color-primary);
+  font-size: var(--text-xs);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.publish-chip__url:hover {
+  text-decoration: underline;
+}
+
+.publish-chip--live,
+.publish-chip--success,
+.publish-chip--done {
+  border-left-color: var(--ok-chip-text);
+}
+
+.publish-chip--live .publish-chip__state,
+.publish-chip--success .publish-chip__state,
+.publish-chip--done .publish-chip__state {
+  color: var(--ok-chip-text);
+}
+
+.publish-chip--error,
+.publish-chip--failed {
+  border-left-color: var(--danger-text);
+}
+
+.publish-chip--error .publish-chip__state,
+.publish-chip--failed .publish-chip__state {
+  color: var(--danger-text);
+}
+
+.publish-chip--building,
+.publish-chip--queued,
+.publish-chip--publishing {
+  border-left-color: var(--color-primary);
+}
+
+.publish-chip--timeout {
+  border-left-color: var(--warn-text);
+}
+
+.publish-chip--timeout .publish-chip__state {
+  color: var(--warn-text);
+}
+
+.publish-panel__btn {
+  align-self: flex-start;
+}
+
+.publish-panel__error {
+  color: var(--danger-text);
+}
+
+/* Editor: rejected image pick (too large / wrong type). */
+.editor-element__file-error {
+  color: var(--danger-text);
+  white-space: normal;
+}

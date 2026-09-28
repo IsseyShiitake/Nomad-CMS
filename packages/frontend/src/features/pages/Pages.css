@@ -1,0 +1,436 @@
+/* Pages workspace — a compact kicker/guide header, then two matched
+   columns: the Website Pages box (the live-site capture as its full
+   background, content floating above it as glass) on the left, repository
+   contents above the publish panel on the right. Both columns share one
+   height and absorb long lists through internal scrolling. Tokens
+   (glass surfaces, easing, radii) come from theme.css, so dark mode is
+   free. */
+
+.pages {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  /* Center the matched columns vertically on screen when there is room;
+     taller viewports simply hang more breathing room around them. */
+  min-height: calc(100dvh - 7.5rem);
+  justify-content: center;
+}
+
+/* --- banner row: kicker + guide, back link ----------------------------- */
+
+.pages-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pages-banner__text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+/* Kicker: the page title as uppercase micro-caps above the guide. */
+.pages-banner__kicker {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--kicker-tracking);
+  color: var(--color-text-muted);
+  padding-left: var(--kicker-tracking); /* balance the trailing letter-spacing */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pages-banner__guide {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  font-size: clamp(1.4rem, 2.8vw, 2.2rem);
+  line-height: 1.15;
+  color: var(--color-text);
+}
+
+.pages-banner__back {
+  flex: 0 0 auto;
+  /* No global anchor reset exists; the link must not render underlined. */
+  text-decoration: none;
+  text-align: center;
+}
+
+/* --- matched columns ---------------------------------------------------- */
+
+.pages-columns {
+  display: grid;
+  /* The Website Pages box leads visually, so it takes the wider share. */
+  grid-template-columns: minmax(0, 1.06fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: stretch;
+  /* One shared height for both columns: room to breathe, capped so the
+     internal scroll areas (not the page) absorb long lists. */
+  height: clamp(30rem, calc(100dvh - 18rem), 44rem);
+}
+
+/* --- website pages box (left): capture backdrop + floating glass ------- */
+
+/* Rounded exactly like the contents card (radius comes from the .card
+   base); the capture beneath clips to those corners. Compound selector
+   beats the .card base for layout only. */
+.pages-card.pages-webpages {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* let the list shrink into its scroll area */
+  padding: 0;
+  overflow: hidden;
+  animation: pages-drawer-rise calc(0.45s * var(--speed)) var(--ease-glide) backwards;
+}
+
+@keyframes pages-drawer-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The live-site capture fills the whole box as its background: cover-fit
+   (the RepoTile scales the virtual viewport to the box, cropping — never
+   stretching), pure decoration. */
+.pages-webpages__capture {
+  position: absolute;
+  inset: 0;
+  /* No pointer events: the backdrop must not steal clicks or trigger the
+     tile's hover lift — content above it stays the only interactive layer. */
+  pointer-events: none;
+}
+
+.pages-webpages__capture .repo-thumb {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  /* Transparent: beneath the capture the card surface itself continues,
+     so the fade below can blend into it seamlessly. */
+  background: transparent;
+  /* Paint-phase clip that survives the cross-process-iframe compositor
+     quirk noted in RepoTile.css: on some GPU setups the ancestor
+     overflow+radius clip is dropped for the iframe — this keeps the
+     capture inside the card's rounded corners everywhere. */
+  clip-path: inset(0 round var(--radius-lg));
+}
+
+/* Dissolve the site's own pixels before its bottom edge: full opacity
+   until 5rem above the capture's end, fully transparent exactly at it —
+   the site melts into the card surface with no hard stop. Anchored to
+   the capture's real rendered height (--thumb-* are set on this element
+   by RepoTile), not to box proportions. */
+.pages-webpages__capture .repo-thumb__frame {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(var(--thumb-viewport-height, 800px) * var(--thumb-scale, 0.25) - 5rem),
+    transparent calc(var(--thumb-viewport-height, 800px) * var(--thumb-scale, 0.25))
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(var(--thumb-viewport-height, 800px) * var(--thumb-scale, 0.25) - 5rem),
+    transparent calc(var(--thumb-viewport-height, 800px) * var(--thumb-scale, 0.25))
+  );
+}
+
+/* The floating head panel is the box's title now; the capture's own name
+   strip would duplicate it behind the list. */
+.pages-webpages__capture .repo-thumb__label {
+  display: none;
+}
+
+/* Content rides ABOVE the backdrop as floating glass — the same material
+   language as repo-thumb__label — and anchors to the BOTTOM of the box,
+   leaving the upper part as an unobstructed view of the captured site. */
+.pages-webpages__content {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.6rem; /* slim: keeps the capped list clear of the card's bottom */
+  padding: 1.25rem;
+}
+
+.pages-webpages .pages-drawer__head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.7rem 1rem;
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.pages-drawer__sub {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  font-size: clamp(1.15rem, 2.5vw, 1.6rem);
+  color: var(--color-text);
+}
+
+.pages-drawer__search {
+  flex: 1 1 16rem;
+  max-width: 26rem;
+}
+
+.pages-drawer__search .pages-toolbar__search {
+  margin-bottom: 0;
+}
+
+/* The list is a scroll body like .pages-contents__body, capped to exactly
+   three rows: the rest of the pages are reached by scrolling inside the
+   box, so the box height (and the matched columns) never grow. */
+.pages-webpages .pages-webpages__list {
+  --pages-row: 2.4rem; /* thin rows: title + path at 1.25 line-height */
+  flex: 0 0 auto;
+  /* +0.5rem: the cap constrains the border box, so the container's own
+     top/bottom padding must count too — without it the last row is cut. */
+  max-height: calc(3 * var(--pages-row) + 2 * 0.625rem + 0.5rem);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  /* Top padding gives the hover lift headroom — without it the scroll
+     container shears the top off the first row when it translates up. */
+  padding: 0.25rem;
+}
+
+.pages-webpages .pages-webpages__list li {
+  /* flex items shrink by default — without this, four rows squeeze into
+     the three-row cap instead of overflowing into the scroll area. */
+  flex: none;
+  display: flex;
+  align-items: center; /* single-line rows center like two-line ones */
+  height: var(--pages-row);
+}
+
+/* Repos with more than three pages: the same box becomes 3×2 — a second
+   column, same height, the surplus still scrolling. */
+.pages-webpages .pages-webpages__list--multi {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: var(--pages-row);
+  align-content: start;
+}
+
+/* Each page row: a glass card rising in with a per-item stagger. */
+.pages-webpages .page-list li {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 0.12rem 1rem; /* thin rows — sized by --pages-row above */
+  animation: pages-row-rise calc(0.4s * var(--speed)) var(--ease-soft) backwards;
+  animation-delay: calc(var(--i, 0) * calc(60ms * var(--speed)));
+  transition:
+    background calc(0.2s * var(--speed)) var(--ease-soft),
+    border-color calc(0.2s * var(--speed)) var(--ease-soft),
+    box-shadow calc(0.2s * var(--speed)) var(--ease-soft),
+    transform calc(0.2s * var(--speed)) var(--ease-soft);
+}
+
+/* Tight two-line stack so the path fits the thin row height. */
+.pages-webpages .page-list__item {
+  gap: 0;
+}
+
+.pages-webpages .page-list__path {
+  line-height: 1.25;
+}
+
+.pages-webpages .page-list li:hover {
+  background: var(--glass-bg-strong);
+  border-color: var(--color-hover-border);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* The row link fills its card so the whole surface is clickable. */
+.pages-webpages .page-list a {
+  display: block;
+}
+
+/* Global .page-list li:last-child strips the bottom border; a glass
+   card row keeps all four. */
+.pages-webpages .page-list li:last-child {
+  border-bottom: 1px solid var(--glass-border);
+}
+
+/* Empty / no-match states float as glass too, so they read over the
+   backdrop. */
+.pages-webpages__status {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+}
+
+@keyframes pages-row-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- side column (right): contents above publish ------------------------ */
+
+.pages-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-height: 0;
+}
+
+/* Contents card takes whatever height the publish panel leaves, and its
+   body scrolls internally — mirroring the Website Pages box. */
+.pages-card.pages-contents {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pages-contents__title {
+  margin: 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--glass-border);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  font-size: 1.17rem;
+  color: var(--color-text);
+}
+
+.pages-contents__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem; /* tighter than the card gap — fits more of the repo */
+  padding-top: 1rem;
+}
+
+/* Compact stack: the section headings and the path line carried default
+   block margins that blanked half the card. Card size is untouched. */
+.pages-contents__body h4 {
+  margin: 0;
+}
+
+.pages-contents__body .file-nav {
+  margin-bottom: 0;
+}
+
+.pages-contents__body .file-nav__path {
+  margin: 0;
+}
+
+/* --- responsive -------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .pages {
+    min-height: 0; /* stacked layout flows from the top */
+    justify-content: flex-start;
+  }
+
+  .pages-columns {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  /* The Website Pages list keeps its 3-row cap at every width. */
+
+  .pages-card.pages-contents {
+    flex: none;
+  }
+
+  .pages-contents__body {
+    flex: none;
+    max-height: 22rem;
+  }
+}
+
+@media (max-width: 700px) {
+  .pages-banner {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .pages-banner__text {
+    align-items: center;
+  }
+
+  .pages-banner__back {
+    align-self: center;
+  }
+
+  .pages-webpages .pages-drawer__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pages-drawer__search {
+    max-width: none;
+  }
+}
+
+/* --- reduced motion ------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pages-card.pages-webpages,
+  .pages-webpages .page-list li {
+    animation: none;
+  }
+
+  .pages-webpages .page-list li,
+  .pages-card.pages-webpages {
+    transition: none;
+  }
+
+  .pages-webpages .page-list li:hover,
+  .pages-card.pages-webpages:hover {
+    transform: none;
+  }
+}

@@ -1,0 +1,228 @@
+/* Ambient background — CONCEPT A "LUMEN".
+   Fixed full-viewport layer at z-index 0; the app layout renders above
+   it. Purely decorative: pointer-events none, aria-hidden.
+
+   What changed from the shipped version, and why:
+
+   • The field is now DIRECTIONAL. One warm key light, one cool fill, and
+     a linear ramp that runs light → deep across the diagonal. The old
+     version stacked five pastels of near-identical value, so the
+     background had no depth to give the foreground anything to sit on.
+
+   • The key light follows the pointer, on its own composited layer
+     (.ambient__key). It is a pre-rendered radial gradient moved with
+     translate3d only — never a re-painted gradient position and never a
+     runtime filter, both of which force a full-viewport raster every
+     frame. The shipped file already carries warnings about exactly that;
+     this honours them.
+
+   • Three orbs instead of four, smaller, lower opacity, with a tighter
+     falloff so they read as out-of-focus light rather than smudges.
+
+   • A vignette closes the corners and pulls the eye to the centre, which
+     is where the intro title and the login card live.
+
+   • The blur stays baked into each orb's gradient. Gradients scale on
+     the GPU; `filter: blur()` does not. */
+
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: var(--lm-field-lo);
+}
+
+/* --- Field: the value ramp ---------------------------------------- */
+
+.ambient__dream {
+  position: absolute;
+  inset: 0;
+  background:
+    /* Cool fill, bottom-right — the shadow side of the ramp. */
+    radial-gradient(72vmax circle at 88% 94%, var(--lm-fill) 0%, rgba(196, 178, 240, 0) 64%),
+    /* Mint counter-light, bottom-left — keeps the shadow side from
+       going muddy violet. */
+    radial-gradient(58vmax circle at 6% 82%, var(--lm-counter) 0%, rgba(178, 226, 210, 0) 62%),
+    /* The ramp itself: warm paper at the top-left, deeper at the
+       bottom-right. This single gradient is what supplies depth. */
+    linear-gradient(152deg, var(--lm-field-hi) 0%, var(--lm-field-mid) 46%, var(--lm-field-lo) 100%);
+  /* Static on purpose — see the perf note at the top of this file. */
+}
+
+/* --- Key light: pointer-tracked, composited ------------------------ */
+
+/* Sized well past the viewport so its soft edge never enters frame, and
+   centred on its own origin: Background.tsx writes --lm-kx/--lm-ky as a
+   translate3d from that centre, so movement is compositor-only. */
+.ambient__key {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 150vmax;
+  height: 150vmax;
+  margin: -75vmax 0 0 -75vmax;
+  background: radial-gradient(circle, var(--lm-key) 0%, var(--lm-key-mid) 34%, transparent 68%);
+  opacity: 0.9;
+  /* Must match REST in Background.tsx — that module overwrites this with
+     the live pointer position, and a browser that never runs it (reduced
+     motion, JS off) has to show the identical composition. */
+  transform: translate3d(-11vw, -14vh, 0);
+  will-change: transform;
+}
+
+/* --- Wandering orbs ------------------------------------------------ */
+
+.ambient__orb {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.5;
+  /* Tighter falloff than the shipped 70%: a smaller bright core with a
+     fast decay reads as a light source, a wide one reads as a stain. */
+  background: radial-gradient(circle, var(--orb-color) 0%, transparent 58%);
+  will-change: transform;
+}
+
+.ambient__orb--1 {
+  --orb-color: #ffb9cf;
+  width: 26vmin;
+  height: 26vmin;
+  top: 14%;
+  left: 16%;
+  animation: ambient-wander1 38s var(--lm-ease-inout) infinite alternate;
+}
+
+.ambient__orb--2 {
+  --orb-color: #b7a4e8;
+  width: 22vmin;
+  height: 22vmin;
+  top: 28%;
+  right: 12%;
+  animation: ambient-wander2 47s var(--lm-ease-inout) infinite alternate;
+}
+
+.ambient__orb--3 {
+  --orb-color: #9fd8c4;
+  width: 24vmin;
+  height: 24vmin;
+  bottom: 10%;
+  left: 38%;
+  animation: ambient-wander3 33s var(--lm-ease-inout) infinite alternate;
+}
+
+@keyframes ambient-wander1 {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(8vw, -6vh, 0) scale(1.14);
+  }
+  to {
+    transform: translate3d(-4vw, 5vh, 0) scale(0.94);
+  }
+}
+
+@keyframes ambient-wander2 {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.04);
+  }
+  50% {
+    transform: translate3d(-10vw, 7vh, 0) scale(0.92);
+  }
+  to {
+    transform: translate3d(5vw, -4vh, 0) scale(1.1);
+  }
+}
+
+@keyframes ambient-wander3 {
+  from {
+    transform: translate3d(0, 0, 0) scale(0.96);
+  }
+  50% {
+    transform: translate3d(6vw, -8vh, 0) scale(1.08);
+  }
+  to {
+    transform: translate3d(-7vw, -2vh, 0) scale(1);
+  }
+}
+
+/* --- Vignette: closes the corners, centres the eye ------------------ */
+
+.ambient__vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    128% 96% at 50% 44%,
+    transparent 52%,
+    var(--lm-vignette) 100%
+  );
+}
+
+/* --- Film grain ---------------------------------------------------- */
+
+/* Sized to the viewport and static apart from a slow opacity breathe,
+   which composites cheaply. */
+.ambient__grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: ambient-grain-breathe 11s var(--lm-ease-inout) infinite;
+}
+
+@keyframes ambient-grain-breathe {
+  50% {
+    opacity: 0.03;
+  }
+}
+
+/* --- Dark theme ---------------------------------------------------- */
+
+:root[data-theme='dark'] .ambient__dream {
+  background:
+    radial-gradient(70vmax circle at 84% 90%, var(--lm-fill) 0%, rgba(64, 96, 140, 0) 62%),
+    radial-gradient(56vmax circle at 8% 78%, var(--lm-counter) 0%, rgba(58, 120, 108, 0) 60%),
+    linear-gradient(152deg, var(--lm-field-hi) 0%, var(--lm-field-mid) 48%, var(--lm-field-lo) 100%);
+}
+
+:root[data-theme='dark'] .ambient__key {
+  opacity: 0.75;
+}
+
+:root[data-theme='dark'] .ambient__orb {
+  opacity: 0.34;
+}
+
+:root[data-theme='dark'] .ambient__orb--1 {
+  --orb-color: #8a6fb8;
+}
+
+:root[data-theme='dark'] .ambient__orb--2 {
+  --orb-color: #5e7fae;
+}
+
+:root[data-theme='dark'] .ambient__orb--3 {
+  --orb-color: #6fae9a;
+}
+
+:root[data-theme='dark'] .ambient__grain {
+  opacity: 0.03;
+}
+
+/* --- Reduced motion: freeze the scene ------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient__dream,
+  .ambient__orb,
+  .ambient__grain {
+    animation: none;
+  }
+
+  /* The key light parks at its default position; Background.tsx also
+     skips the pointer loop entirely under this preference. */
+  .ambient__key {
+    transform: translate3d(-11vw, -14vh, 0);
+    transition: none;
+  }
+}

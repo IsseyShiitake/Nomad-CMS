@@ -1,0 +1,125 @@
+/* Editor mood — glass reskin layered over the shared editor classes.
+   Structure, controls, and layout stay in global.css; this sheet only
+   adds the floating preview dock, the violet vignette behind the
+   preview column, the element-row veils, and the page-load rise.
+   Tokens come from theme.css, so the dark theme swaps in free. */
+
+/* --- page-load rise ----------------------------------------------------- */
+
+/* One rise on mount: the editor grid fades in and lifts into place. */
+.editor-mood__enter {
+  animation: editor-mood-enter calc(0.4s * var(--speed)) var(--ease-soft) both;
+}
+
+@keyframes editor-mood-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- floating preview dock ----------------------------------------------- */
+
+/* The preview header (title, mode toggle, highlight, device, zoom)
+   reads as one glass pill pinned to the top of the preview column;
+   the frame scrolls blurred beneath it. The docked controls
+   (.scanner__toggle-btn, .editor__highlight, .editor__device,
+   .editor__zoom button) keep their global.css styles untouched —
+   the pill simply frames them. */
+.editor-mood__dock {
+  padding: 0.5rem 0.9rem;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg); /* square sides, rounded corners — like .editor__panel */
+  box-shadow: 0 8px 24px rgba(30, 20, 50, 0.12);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+:root[data-theme='dark'] .editor-mood__dock {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* --- vignette behind the preview frame ------------------------------------ */
+
+/* The preview panel is its own stacking context, so the negative-z
+   backdrop paints above the panel's glass background and below every
+   child (dock, frame, legend) — a faint violet bloom behind the
+   browser card. */
+.editor-mood .editor__preview {
+  isolation: isolate;
+}
+
+.editor-mood__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(closest-side, var(--lm-iris-tint, rgba(91, 75, 214, 0.1)), transparent 70%);
+  pointer-events: none;
+}
+
+:root[data-theme='dark'] .editor-mood__backdrop {
+  background: radial-gradient(closest-side, rgba(179, 164, 232, 0.1), transparent 70%);
+}
+
+/* The frame keeps its global paper-card look; the mood adds one step
+   of lift so it floats above the vignette. */
+.editor-mood .editor__preview-frame {
+  box-shadow: var(--shadow-md);
+}
+
+:root[data-theme='dark'] .editor-mood .editor__preview-frame {
+  box-shadow: 0 8px 28px rgba(5, 4, 14, 0.6);
+}
+
+/* --- element rows ---------------------------------------------------------- */
+
+/* Roomier rows with a smooth hover veil; the active row keeps its
+   stronger accent wash from global.css. */
+.editor-mood__row {
+  margin-block: 0.5rem;
+  transition:
+    background calc(0.25s * var(--speed)) var(--ease-soft),
+    border-color calc(0.25s * var(--speed)) var(--ease-soft),
+    box-shadow calc(0.25s * var(--speed)) var(--ease-soft),
+    transform calc(0.25s * var(--speed)) var(--ease-soft);
+}
+
+.editor-mood__row:not(.editor-element--active):hover {
+  background: var(--glass-bg-strong);
+}
+
+/* Glass focus ring on the row's fields — a softer halo than the global
+   focus ring, with a faint shadow for depth. */
+.editor-mood__row .editor-element__textarea:focus-visible,
+.editor-mood__row .editor-element__input:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--lm-iris-ring, rgba(91, 75, 214, 0.34)), var(--shadow-sm);
+}
+
+:root[data-theme='dark'] .editor-mood__row .editor-element__textarea:focus-visible,
+:root[data-theme='dark'] .editor-mood__row .editor-element__input:focus-visible {
+  box-shadow: 0 0 0 3px var(--lm-iris-ring, rgba(169, 155, 255, 0.42)), var(--shadow-sm);
+}
+
+/* --- reduced motion --------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  /* The page appears in place — no rise. */
+  .editor-mood__enter {
+    animation: none;
+  }
+
+  /* Hover veils and focus rings switch instantly — no movement. */
+  .editor-mood__row {
+    transition: none;
+  }
+}

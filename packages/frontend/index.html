@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="CMS for editing static HTML sites in GitHub repositories" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; connect-src 'self'; font-src 'self' https://fonts.gstatic.com; frame-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    />
+    <title>Nomad CMS</title>
+
+    <!-- CONCEPT A "LUMEN" — the only change to this file is the two font
+         requests below. The existing CSP already whitelists
+         fonts.googleapis.com (style-src) and fonts.gstatic.com (font-src),
+         so no policy change is needed and nothing else is added to the
+         critical path.
+
+         Why this matters more than it looks: --font-display is
+         Didot → Bodoni MT → Playfair Display → Georgia → serif. On a stock
+         Linux desktop none of the first four are installed and Georgia is
+         not either, so the brand's high-contrast italic has been silently
+         resolving to Liberation/DejaVu Serif — a chunky Times substitute.
+         Fraunces is a variable soft-serif with a genuine italic and an
+         optical-size axis, so "Nomad" renders as designed at 5rem and
+         stays legible at 19px.
+
+         Both faces are variable and subset by unicode-range, so EN and FR
+         cost one request each. `display=swap` keeps text visible on a slow
+         font fetch, and every token stack still ends in the shipped
+         fallbacks — offline, the app looks exactly as it does today. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..700,0..100,0..1;1,9..144,300..700,0..100,0..1&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,300..700;1,400..600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

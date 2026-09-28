@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files (never commit secrets)
+.env
+.env.local
+.env.*.local
+packages/backend/.dev.vars
+
+# Cloudflare
+.wrangler/
+
+# Editor / OS
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# Tool state (never part of the project source)
+.mimosa/
+.v2c/
+.video_agent/
+
+# Project-memory / handoff documents (excluded from the public repo per
+# implements.md D4 — they carry the operator's deployment details)
+log.md
+log-archive.md
+map.txt
+implements.md
