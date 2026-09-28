@@ -9,15 +9,21 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      # @cms/shared resolves from its built dist/ (main/types point there),
+      # which does not exist in a fresh checkout — build it before any
+      # package typechecks or runs its tests.
+      - name: Build shared package
+        run: npm run build --workspace @cms/shared
 
       - name: Typecheck
         run: npm run typecheck
