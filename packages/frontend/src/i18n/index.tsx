@@ -10,7 +10,9 @@ import type { ReactNode } from 'react';
 import { en, fr } from './messages';
 import type { Locale, Messages } from './messages';
 
-const STORAGE_KEY = 'cms.locale';
+/** localStorage key persisting the user's locale choice (exported for
+ * tests that must reset it — the provider restores from it on mount). */
+export const STORAGE_KEY = 'cms.locale';
 const dictionaries: Record<Locale, Messages> = { en, fr };
 
 /** Replaces `{key}` placeholders in a template with values. */

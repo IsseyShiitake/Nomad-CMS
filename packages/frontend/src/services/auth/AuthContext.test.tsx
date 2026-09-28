@@ -8,7 +8,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getSession, setUnauthorizedHandler, startOAuthLogin } from '@/api';
-import { I18nProvider, useI18n } from '@/i18n';
+import { I18nProvider, STORAGE_KEY, useI18n } from '@/i18n';
 import { AuthProvider, useAuth } from './AuthContext';
 
 vi.mock('@/api', () => ({
@@ -117,6 +117,14 @@ describe('AuthProvider language application', () => {
   afterEach(() => {
     cleanup();
     vi.mocked(getSession).mockReset();
+    // The client-language test persists its locale; without this reset
+    // the next test's provider inherits it wherever jsdom HAS localStorage
+    // (CI) and renders the stored locale instead of the default.
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* no storage in this harness */
+    }
   });
 
   it('applies a client session stored language on restore', async () => {
