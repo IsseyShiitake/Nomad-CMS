@@ -13,6 +13,9 @@
     "build": "npm run build --workspace @cms/shared && npm run build --workspace @cms/backend --workspace @cms/frontend",
     "build:frontend": "npm run build --workspace @cms/frontend",
     "build:backend": "npm run build --workspace @cms/backend",
+    "build:single": "node scripts/build-single.mjs",
+    "smoke:single": "node scripts/smoke-single.mjs",
+    "dryrun:single": "node scripts/dryrun-single.mjs",
     "typecheck": "npm run typecheck --workspace @cms/shared && npm run typecheck --workspace @cms/backend --workspace @cms/frontend",
     "test": "npm test --workspaces --if-present",
     "deploy:backend": "npm run deploy --workspace @cms/backend",
@@ -27,5 +30,8 @@
         "undici": "7.29.0"
       }
     }
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

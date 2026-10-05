@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 build/
+dist-single/
 *.tsbuildinfo
 
 # Environment files (never commit secrets)
@@ -17,6 +18,7 @@ packages/backend/.dev.vars
 
 # Editor / OS
 .DS_Store
+.directory
 *.log
 .vscode/
 .idea/

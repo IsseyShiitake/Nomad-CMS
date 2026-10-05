@@ -1,0 +1,68 @@
+# Nomad CMS — configuration for the single-file Worker.
+#
+# You normally never edit this file by hand: run `node setup.mjs` (in this
+# same folder) once and it fills every slot below through targeted,
+# idempotent replacements. The manual-by-choice variant (same slots, same
+# commands, done by hand) is documented in the project's self-hosting
+# guide.
+#
+# The Worker script is nomad-cms.worker.js — the whole CMS (API + UI) in
+# one file. There is no [assets] section by design: the Worker serves
+# everything itself.
+
+# Your Worker's name — it becomes part of the URL:
+#   https://<name>.<your-subdomain>.workers.dev
+# Lowercase letters, digits and dashes. It must NOT match a Worker that
+# already exists on your Cloudflare account (a name collision overwrites
+# that Worker's code). setup.mjs asks for it and fills it in.
+name = "your-worker-name"
+
+# The Worker entry point — the single-file bundle itself.
+main = "nomad-cms.worker.js"
+
+compatibility_date = "2026-08-20"
+
+# KV storage for sessions, client accesses and platform connections.
+# The ids are placeholders (zeros): a local `wrangler dev` works with
+# them, but a real deploy refuses until setup.mjs has created your two
+# namespaces and pasted their real ids here — an unfilled template can
+# never accidentally ship.
+[[kv_namespaces]]
+binding = "SESSION_KV"
+id = "00000000000000000000000000000000"
+preview_id = "00000000000000000000000000000000"
+
+# ── Public variables ────────────────────────────────────────────────────────
+# Everything secret (the GitHub client secret) is bound via
+#   npx wrangler secret put GITHUB_CLIENT_SECRET
+# and never lives in this file.
+
+[vars]
+# GitHub OAuth app client id (public by design). Filled by setup.mjs
+# after you register your app. Empty = the sign-in button renders, but
+# login cannot complete until it is set.
+GITHUB_CLIENT_ID = ""
+
+# OAuth callback URL. Must match the callback registered on your GitHub
+# OAuth app EXACTLY (the token exchange re-sends the same value).
+# Filled by setup.mjs from your deployed Worker URL:
+#   https://<name>.<your-subdomain>.workers.dev/auth/callback
+GITHUB_REDIRECT_URI = ""
+
+# Your GitHub login — the only account allowed to be the admin on this
+# instance (operator pinning; any other GitHub login is rejected at
+# exchange with 403 instance_locked). Empty = the FIRST GitHub login to
+# complete OAuth claims the slot, write-once. Filling it removes that
+# race; setup.mjs writes it from the username you enter.
+OPERATOR_LOGIN = ""
+
+# Optional platform logins ("Log in with Cloudflare/Vercel" in Settings).
+# Leave the client ids EMPTY to keep those buttons hidden — platform
+# publishing is in-CMS configuration (Settings → Hosting platforms) and
+# never required to edit your sites. The redirect URIs are filled by
+# setup.mjs anyway so they are correct the day you register your own
+# platform apps and paste their ids here.
+CLOUDFLARE_OAUTH_CLIENT_ID = ""
+CLOUDFLARE_OAUTH_REDIRECT_URI = ""
+VERCEL_OAUTH_CLIENT_ID = ""
+VERCEL_OAUTH_REDIRECT_URI = ""

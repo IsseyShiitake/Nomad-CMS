@@ -113,6 +113,7 @@ See `docs/github-app.md` for full details, including migrating to a GitHub App.
 npm run build
 npm run typecheck
 npm test
+npm run build:single   # single-file Worker bundle → dist-single/ (release artifact)
 ```
 
 ## Project structure
