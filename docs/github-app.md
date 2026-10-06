@@ -5,6 +5,16 @@ The CMS authenticates with GitHub via OAuth. This document covers two approaches
 1. **GitHub OAuth App** — the current, recommended setup (simplest, works locally and in production).
 2. **GitHub App** — a more advanced option that supports fine-grained permissions and per-installation webhooks. The architecture is designed so migrating later only changes the backend token-acquisition code, not the route or UI contracts.
 
+> **Deploying the release bundle?** (`nomad-cms.worker.js` + `wrangler.toml` +
+> `setup.mjs` from the Releases page.) You still create exactly this OAuth App —
+> the setup script automates the steps below: it prints the exact callback URL
+> for your deployed Worker, opens the create-app page, takes the Client ID into
+> `wrangler.toml`, and pipes the secret into
+> `wrangler secret put GITHUB_CLIENT_SECRET` without writing it anywhere. See
+> `docs/self-hosting.md`. The manual wiring table below applies unchanged —
+> only the file paths differ (`wrangler.toml` sits beside the Worker in your
+> bundle folder).
+
 ---
 
 ## Option 1: GitHub OAuth App (current)
@@ -13,7 +23,7 @@ The CMS authenticates with GitHub via OAuth. This document covers two approaches
 
 1. Go to **https://github.com/settings/developers** → **New OAuth App**.
 2. Fill in the details:
-   - **Application name:** `Static Site CMS`
+   - **Application name:** `Nomad CMS`
    - **Homepage URL:** `https://cms.example.com` (or `http://localhost:5173` for development)
    - **Authorization callback URL:** `https://cms.example.com/auth/callback` (or `http://localhost:5173/auth/callback` for development)
 3. Click **Register application**.

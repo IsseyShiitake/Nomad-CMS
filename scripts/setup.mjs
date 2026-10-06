@@ -247,11 +247,17 @@ async function main() {
   }
 
   // 3 — KV namespaces (create, or reuse on re-runs).
-  const namespaceFor = async (preview) => {
-    const args = ['kv', 'namespace', 'create', 'SESSIONS'];
-    if (preview) args.push('--preview');
-    const created = wrangler(args);
-    const id = parseNamespaceId(created.stdout, preview);
+  // Namespace titles are GLOBAL per account and are used verbatim by
+  // wrangler (no automatic worker prefix) — so the name must embed the
+  // worker name to avoid colliding with pre-existing namespaces
+  // ("SESSIONS" is taken on most long-lived accounts) and with a second
+  // instance's namespaces. Two explicitly-titled namespaces instead of
+  // the `--preview` flag, whose title mangling is wrangler-version
+  // dependent; the second one fills the toml's preview_id slot.
+  const namespaceFor = async (suffix) => {
+    const title = `${workerName}-SESSIONS${suffix}`;
+    const created = wrangler(['kv', 'namespace', 'create', title]);
+    const id = parseNamespaceId(created.stdout, false);
     if (id) return id;
     // Not created — usually "already exists" on a re-run: look it up.
     const listed = wrangler(['kv', 'namespace', 'list']);
@@ -261,22 +267,18 @@ async function main() {
     } catch {
       /* handled below */
     }
-    const suffix = preview ? '_preview' : '';
-    const existing = namespaces.find((entry) =>
-      typeof entry.title === 'string' &&
-      entry.title === `${workerName}-SESSIONS${suffix}`,
-    );
+    const existing = namespaces.find((entry) => entry.title === title);
     if (existing?.id) {
       log(`setup: reusing existing namespace "${existing.title}".`);
       return existing.id;
     }
     fail(
-      `could not ${created.status === 0 ? 'parse the id from' : 'create'} the ${preview ? 'preview ' : ''}SESSIONS namespace — run \`npx wrangler ${args.join(' ')}\` yourself, then re-run me.`,
+      `could not ${created.status === 0 ? 'parse the id from' : 'create'} the ${title} namespace — run \`npx wrangler kv namespace create ${title}\` yourself, then re-run me.`,
     );
   };
   log('\nsetup: creating KV namespaces…');
-  const kvId = await namespaceFor(false);
-  const kvPreviewId = await namespaceFor(true);
+  const kvId = await namespaceFor('');
+  const kvPreviewId = await namespaceFor('-preview');
   if (kvId === kvPreviewId) fail('the two KV namespace ids are identical — refusing to write them.');
 
   let toml = readFileSync(tomlPath, 'utf8');

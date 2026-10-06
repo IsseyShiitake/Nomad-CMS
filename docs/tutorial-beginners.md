@@ -1,6 +1,6 @@
-# Beginner's Tutorial: Install and Use the Static Site CMS
+# Beginner's Tutorial: Install and Use the Nomad CMS
 
-Welcome! This guide walks you through getting the **Static Site CMS** running on your computer for the first time, and shows you how to use it to edit a website stored on GitHub.
+Welcome! This guide walks you through getting the **Nomad CMS** running on your computer for the first time, and shows you how to use it to edit a website stored on GitHub.
 
 If you've never used a terminal, npm, or GitHub before, don't worry — every step is explained below.
 
@@ -8,7 +8,7 @@ If you've never used a terminal, npm, or GitHub before, don't worry — every st
 
 ## 1. What is this project?
 
-The **Static Site CMS** is a tool that lets you edit a plain HTML website (the kind made of simple `.html` files) through a visual editor in your browser — without needing to hand-edit code.
+The **Nomad CMS** is a tool that lets you edit a plain HTML website (the kind made of simple `.html` files) through a visual editor in your browser — without needing to hand-edit code.
 
 It works like this:
 
@@ -120,7 +120,7 @@ Now you have a real static site with one page you can edit with the CMS.
 1. Go to **https://github.com/settings/developers**
 2. Click **New OAuth App**.
 3. Fill in:
-   - **Application name:** `Static Site CMS (local)`
+   - **Application name:** `Nomad CMS (local)`
    - **Homepage URL:** `http://localhost:5173`
    - **Authorization callback URL:** `http://localhost:5173/auth/callback`
 4. Click **Register application**.

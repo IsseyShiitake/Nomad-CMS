@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../env';
 import { sessionCookie } from '../core/http';
+import { AUTHORIZE_RATE_LIMIT, AUTHORIZE_RATE_WINDOW_SECONDS } from '../core/rateLimit';
 import { authRoutes } from './auth';
 import type { RouteContext } from './index';
 
@@ -287,5 +288,95 @@ describe('cookie deployment mode', () => {
     const cookie = sessionCookie(false, request, 'tok', 3600, false);
     expect(cookie).toContain('SameSite=Lax');
     expect(cookie).not.toContain('Secure');
+  });
+});
+
+describe('authorize rate limiting (per-IP KV budget guard)', () => {
+  let kv: KVNamespace;
+  let kvStore: Map<string, { value: string }>;
+  let ctx: RouteContext;
+
+  beforeEach(() => {
+    ({ kv, store: kvStore } = mockKv());
+    ctx = { env: makeEnv(kv) };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** Runs one GET /authorize as the given source IP. */
+  function authorizeFrom(ip: string): Promise<Response> {
+    return authRoutes.handle(
+      '/authorize',
+      new Request('http://localhost/api/auth/authorize', {
+        headers: { 'CF-Connecting-IP': ip },
+      }),
+      ctx,
+    );
+  }
+
+  function stateKeyCount(): number {
+    return [...kvStore.keys()].filter((key) => key.startsWith('oauth-state:')).length;
+  }
+
+  it('allows a legitimate sign-in and still binds the state', async () => {
+    const response = await authorizeFrom('203.0.113.10');
+    expect(response.status).toBe(200);
+    const { url } = ((await response.json()) as { data: { url: string } }).data;
+    const state = new URL(url).searchParams.get('state');
+    expect(await kv.get(`oauth-state:${state}`)).toBe('1');
+  });
+
+  it('answers 429 past the per-IP limit, writing neither state nor counter', async () => {
+    // Exhaust the IP's window budget.
+    for (let i = 0; i < AUTHORIZE_RATE_LIMIT; i += 1) {
+      const response = await authorizeFrom('203.0.113.20');
+      expect(response.status).toBe(200);
+    }
+    const statesBefore = stateKeyCount();
+    const totalBefore = kvStore.size;
+
+    const limited = await authorizeFrom('203.0.113.20');
+    expect(limited.status).toBe(429);
+    const { error } = (await limited.json()) as { error: { code: string } };
+    expect(error.code).toBe('rate_limited');
+    const retryAfter = Number.parseInt(limited.headers.get('Retry-After') ?? '', 10);
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(AUTHORIZE_RATE_WINDOW_SECONDS);
+
+    // The rejected request must not have written anything at all.
+    expect(stateKeyCount()).toBe(statesBefore);
+    expect(kvStore.size).toBe(totalBefore);
+  });
+
+  it('isolates the budget per source IP', async () => {
+    for (let i = 0; i < AUTHORIZE_RATE_LIMIT; i += 1) {
+      await authorizeFrom('203.0.113.30');
+    }
+    expect((await authorizeFrom('203.0.113.30')).status).toBe(429);
+    // A different source IP has its own budget.
+    expect((await authorizeFrom('203.0.113.31')).status).toBe(200);
+    // No-header requests (local dev) share one fail-safe bucket.
+    const noHeader = await authRoutes.handle(
+      '/authorize',
+      new Request('http://localhost/api/auth/authorize'),
+      ctx,
+    );
+    expect(noHeader.status).toBe(200);
+  });
+
+  it('starts a fresh budget when the window elapses', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-06T12:00:00Z'));
+    for (let i = 0; i < AUTHORIZE_RATE_LIMIT; i += 1) {
+      await authorizeFrom('203.0.113.40');
+    }
+    expect((await authorizeFrom('203.0.113.40')).status).toBe(429);
+
+    // One millisecond past the window boundary: a new bucket key, a new budget.
+    vi.setSystemTime(new Date('2026-10-06T13:00:00.001Z'));
+    expect((await authorizeFrom('203.0.113.40')).status).toBe(200);
   });
 });

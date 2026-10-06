@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide walks through deploying the Static Site CMS to production as a single Cloudflare Worker that serves both the API and the frontend's static assets.
+This guide walks through deploying the Nomad CMS to production as a single Cloudflare Worker that serves both the API and the frontend's static assets.
 
 ## Architecture Overview
 

@@ -30,3 +30,20 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # implements.md §7: the single-file bundle's size is pinned. The
+      # budget leaves headroom over the current ~687 KiB raw; a breach
+      # means the inlined-UI bundle is creeping toward the Workers
+      # free-plan limit and must be trimmed before release.
+      - name: Single-file bundle size pin
+        run: |
+          npm run build:single
+          node -e "
+            const size = require('node:fs').statSync('dist-single/nomad-cms.worker.js').size;
+            const budget = 800 * 1024;
+            if (size > budget) {
+              console.error('dist-single/nomad-cms.worker.js is ' + size + ' bytes — over the ' + budget + '-byte budget. Trim before release.');
+              process.exit(1);
+            }
+            console.log('bundle size: ' + (size / 1024).toFixed(1) + ' KiB (budget ' + (budget / 1024) + ' KiB)');
+          "

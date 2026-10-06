@@ -68,26 +68,28 @@ if (sub === 'login') {
   process.exit(0);
 }
 if (sub === 'kv' && rest[1] === 'namespace') {
-  const preview = rest.includes('--preview');
-  const slot = preview ? 'previewId' : 'id';
+  // Mirrors REAL wrangler semantics (as observed live 2026-10-06):
+  // titles are used verbatim, are GLOBAL per account, and creating a
+  // duplicate title fails — no --preview flag involved.
+  state.namespaces = state.namespaces ?? {};
+  const title = rest[2] ?? '';
   if (rest[2] === 'create') {
-    if (state[slot]) {
-      console.error(\`The namespace title "\${name}-SESSIONS\${preview ? '_preview' : ''}" is already in use by another namespace. Please select a different name.\`);
+    const t = rest[3] ?? '';
+    if (state.namespaces[t]) {
+      console.error(\`The namespace title "\${t}" is already in use by another namespace. Please select a different name.\`);
       process.exit(1);
     }
     const id = Array.from({ length: 32 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
-    state[slot] = id;
+    state.namespaces[t] = id;
     state.name = name;
     save();
-    console.log(\`🌀 Creating namespace with title "\${name}-SESSIONS\${preview ? '_preview' : ''}"\`);
+    console.log(\`🌀 Creating namespace with title "\${t}"\`);
     console.log('✨ Success!');
-    console.log(preview ? \`{ binding = "SESSIONS", preview_id = "\${id}" }\` : \`{ binding = "SESSIONS", id = "\${id}" }\`);
+    console.log(\`{ binding = "SESSIONS", id = "\${id}" }\`);
     process.exit(0);
   }
   if (rest[2] === 'list') {
-    const entries = [];
-    if (state.id) entries.push({ id: state.id, title: \`\${state.name}-SESSIONS\` });
-    if (state.previewId) entries.push({ id: state.previewId, title: \`\${state.name}-SESSIONS_preview\` });
+    const entries = Object.entries(state.namespaces).map(([title, id]) => ({ id, title }));
     console.log(JSON.stringify(entries));
     process.exit(0);
   }

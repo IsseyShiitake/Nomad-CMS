@@ -37,26 +37,84 @@ Nomad CMS is single-tenant by design: you deploy your own Worker, register your 
 
 - a free Cloudflare account (Workers + Workers KV),
 - a GitHub account,
-- Node.js ^20.19.0 or >=22.12.0 with npm.
+- Node.js 20 or newer with npm (`node --version` to check).
 
-**The short version** — full guide in [`docs/deployment.md`](docs/deployment.md), beginner-friendly walkthrough in [`docs/tutorial-beginners.md`](docs/tutorial-beginners.md):
+### The short way — the setup script
 
-1. Clone this repository and run `npm install`.
-2. Create a GitHub OAuth app (https://github.com/settings/developers, scope `repo`) and note its Client ID and client secret.
-3. Create a KV namespace (`npx wrangler kv namespace create SESSIONS_NOMAD`) and copy its id into `packages/backend/wrangler.toml`.
-4. In `wrangler.toml` `[vars]`, set `GITHUB_CLIENT_ID`, `GITHUB_REDIRECT_URI = https://<your-worker>.<your-subdomain>.workers.dev/auth/callback`, and `OPERATOR_LOGIN` = your own GitHub login (operator pinning: only that login can be the admin — every other GitHub login is rejected with `403 instance_locked`).
-5. Set the secret with `npx wrangler secret put GITHUB_CLIENT_SECRET`. `SESSION_ENCRYPTION_KEY` is optional — the Worker self-provisions one into KV on first boot if omitted.
-6. Run `npm run deploy` from the repository root.
-7. Open your worker URL and sign in with GitHub.
+Download the release bundle from the [Releases page](https://github.com/IsseyShiitake/Nomad-CMS/releases) — three files: `nomad-cms.worker.js`, `wrangler.toml`, `setup.mjs` — put them in one empty folder, then:
 
-Setup takes about ten minutes. A one-file download bundle with an interactive setup script (no clone required) is on the roadmap — until then, the steps above are the way.
+```bash
+node setup.mjs
+```
 
-### Security model
+The script does everything else on your Cloudflare account and asks you only for:
+
+1. a **Worker name** (becomes `https://<name>.<your-subdomain>.workers.dev`),
+2. your **GitHub username** (that login becomes the instance's only admin),
+3. one **browser step**: it opens GitHub's "new OAuth app" page — you fill in the name, paste the callback URL the script shows you, and copy back the **Client ID** and **Client secret**. The secret is typed hidden and piped straight into `wrangler secret put` — it is never written to any file.
+
+When it finishes it prints your CMS URL. Open it, sign in with GitHub, and start editing. Your sites keep building on their existing platform (GitHub Pages / Cloudflare Pages / Vercel) from the commits the CMS pushes — no platform connection is required to edit.
+
+Setup takes about ten minutes. The full walkthrough, including every prompt explained, is in [`docs/self-hosting.md`](docs/self-hosting.md).
+
+### The manual way — no installer
+
+For people who prefer to do every step by hand:
+
+1. Download the release bundle (above) into one folder.
+2. Create the KV namespaces and note their ids:
+   ```
+   npx wrangler kv namespace create my-site-SESSIONS
+   npx wrangler kv namespace create my-site-SESSIONS-preview
+   ```
+3. Edit `wrangler.toml`: set `name`, paste the two namespace ids into the `[[kv_namespaces]]` block, set `GITHUB_REDIRECT_URI = "https://<name>.<your-subdomain>.workers.dev/auth/callback"` and `OPERATOR_LOGIN` to your GitHub login.
+4. Deploy with placeholder vars:
+   ```
+   npx wrangler deploy
+   ```
+5. Create a GitHub OAuth app at https://github.com/settings/applications/new with the callback `https://<name>.<your-subdomain>.workers.dev/auth/callback`.
+6. Put the app's client id in `wrangler.toml` (`GITHUB_CLIENT_ID`) and bind the secret:
+   ```
+   npx wrangler secret put GITHUB_CLIENT_SECRET
+   ```
+7. Deploy again and open your Worker URL.
+
+Every slot in `wrangler.toml` is commented. `docs/deployment.md` covers the same flow for a source checkout.
+
+## Updating your instance
+
+Your `wrangler.toml` is your file — it holds your Worker name, KV ids, and client id, and releases never overwrite it (keep the folder; back it up). To update the CMS: download the new `nomad-cms.worker.js` from the Releases page, replace the old one in your bundle folder, and run `npx wrangler deploy`. All data — sessions, client accesses, platform connections — lives in your KV namespace and survives updates.
+
+## Troubleshooting
+
+| Symptom | What it means | Fix |
+| --- | --- | --- |
+| GitHub returns `redirect_uri_mismatch` | The callback registered on your GitHub OAuth app doesn't exactly match `GITHUB_REDIRECT_URI` in `wrangler.toml` | Make both `https://<name>.<your-subdomain>.workers.dev/auth/callback`, character for character |
+| "Sign in" ends in `instance_locked` | This instance's operator slot is claimed by another GitHub login — it is write-once by design | If you own the instance: set `OPERATOR_LOGIN` in `wrangler.toml` to your login and redeploy. If you don't: you're on someone else's instance |
+| Deploy fails: KV namespace title already in use | A namespace with that exact title already exists on the account (the setup script names them `<worker>-SESSIONS` to avoid this) | Re-run the script — it reuses existing namespaces — or pick another Worker name |
+| Setup prints "could not read the URL from wrangler's output" | The deploy worked but the URL line wasn't parseable | Paste the printed `https://…workers.dev` URL when the script asks |
+| `429 rate_limited` on sign-in | Too many sign-in attempts from your IP in one hour (built-in abuse guard) | Wait a few minutes and try again |
+| Everything 404s after a deploy | The Worker name in `wrangler.toml` doesn't match the URL you're visiting | Check `name` in the toml and redeploy |
+
+## FAQ
+
+**Does my site need to be on Cloudflare or Vercel?** No. Editing only needs the site's HTML in a GitHub repository. Publishing integrations are optional extras configured inside the CMS (Settings → Hosting platforms).
+
+**Who can sign in?** Exactly one GitHub login (the operator). You can hand out restricted **client accesses** — password logins locked to a single repository — to other people from inside the CMS.
+
+**Where do my credentials live?** Your GitHub OAuth secret is a Worker secret; access and platform tokens are encrypted at rest in your own KV namespace. Nothing is stored by Nomad CMS's authors — the authors can't reach your instance at all.
+
+**Can I run two instances on one account?** Yes — different Worker names. The setup script namespaces the KV storage per instance automatically.
+
+**How much does it cost?** The free tiers of Cloudflare Workers/KV are enough for personal use.
+
+## Security model
 
 - **GitHub credentials never reach the frontend.** The Cloudflare Worker is the only component that holds the GitHub OAuth client secret. The session token is carried in an **HttpOnly cookie** (never readable by JavaScript); the frontend only ever sees the user's public profile.
 - **GitHub and platform API tokens are encrypted at rest** in the Worker's KV namespace (`SESSION_ENCRYPTION_KEY`), so namespace read access alone does not expose them.
-- **Secrets are never committed.** Local secrets live in `packages/backend/.dev.vars` (gitignored). Production secrets are set via `wrangler secret put`.
-- **Security headers + CORS + CSRF** are applied to every API response; the frontend ships a CSP meta tag plus a `_headers` file honored by Workers Static Assets. Cross-origin credentialed calls require `ALLOWED_ORIGINS`, and state-changing methods require an `X-CSRF-Token` header.
+- **Secrets are never committed.** The setup script pipes the client secret straight into `wrangler secret put`. Local development secrets live in `packages/backend/.dev.vars` (gitignored).
+- **Security headers + CORS + CSRF** are applied to every API response; the frontend ships a CSP meta tag, and the single-file bundle ports those headers 1:1.
+- **Operator pinning:** only `OPERATOR_LOGIN` may hold the admin role; every other GitHub login is rejected with `403 instance_locked`.
 
 ## Local development
 
@@ -142,8 +200,10 @@ This project is a **monorepo** with three packages:
 **Backend** (`packages/backend/src`):
 
 - `index.ts` — Worker entry point
+- `index-single.ts` — single-file bundle entry (embedded assets instead of the ASSETS binding)
+- `single/` — embedded-asset serving for the single-file build
 - `env.ts` — typed Worker environment
-- `core/` — HTTP helpers + security headers
+- `core/` — HTTP helpers, security headers, rate limiting
 - `routes/` — API route modules (auth, repositories, deploy, preview, clients)
 - `services/auth/` — OAuth code exchange + session manager
 - `services/github/` — GitHub API client
@@ -151,7 +211,8 @@ This project is a **monorepo** with three packages:
 
 ## Documentation
 
-- `docs/deployment.md` — end-to-end production deployment
+- `docs/self-hosting.md` — full self-hosting guide (script + manual walkthroughs)
+- `docs/deployment.md` — end-to-end production deployment from source
 - `docs/hosting-platforms.md` — Cloudflare Pages & Vercel publishing
 - `docs/github-app.md` — GitHub OAuth App configuration
 - `docs/cloudflare-worker.md` — Cloudflare Worker configuration

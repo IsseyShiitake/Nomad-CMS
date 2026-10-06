@@ -43,6 +43,12 @@ import {
   sessionCookie,
 } from '../core/http';
 import {
+  AUTHORIZE_RATE_LIMIT,
+  AUTHORIZE_RATE_WINDOW_SECONDS,
+  checkRateLimit,
+  clientIp,
+} from '../core/rateLimit';
+import {
   ClientStore,
   SESSION_TTL_SECONDS,
   SessionManager,
@@ -275,6 +281,25 @@ export const authRoutes = {
     // server-issued state stored in KV (10-minute TTL). The frontend just
     // redirects to the returned url; it never constructs OAuth URLs itself.
     if (path === '/authorize' && request.method === 'GET') {
+      // Rate limit before ANY KV write: this endpoint is unauthenticated by
+      // nature (it starts the login) and the state entry costs one write —
+      // without the guard, a request loop could exhaust the KV daily write
+      // budget and lock every user out of signing in (core/rateLimit.ts).
+      const verdict = await checkRateLimit(
+        ctx.env,
+        'authorize',
+        clientIp(request),
+        AUTHORIZE_RATE_LIMIT,
+        AUTHORIZE_RATE_WINDOW_SECONDS,
+      );
+      if (!verdict.allowed) {
+        return jsonError(
+          'rate_limited',
+          'Too many sign-in attempts from this address — try again shortly',
+          429,
+          { 'Retry-After': String(verdict.retryAfterSeconds) },
+        );
+      }
       const state = Array.from(crypto.getRandomValues(new Uint8Array(32)))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
