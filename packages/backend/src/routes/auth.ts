@@ -453,14 +453,16 @@ export const authRoutes = {
 
       const user = syntheticUser(record.label);
       // The session carries the creating admin's login (deploy connections
-      // are keyed by it) and the access's stored language so the frontend
-      // can apply the client's preference on restore.
+      // are keyed by it), the access's stored language so the frontend can
+      // apply the client's preference on restore, and the access id so the
+      // save path can read the live review-mode flag.
       const token = await sessions.createClientSession(
         githubToken,
         user,
         record.repo,
         record.createdBy,
         record.language ?? null,
+        record.clientId,
       );
 
       const info: SessionInfo = {
@@ -468,6 +470,8 @@ export const authRoutes = {
         kind: 'client',
         repoLock: record.repo,
         language: record.language ?? null,
+        clientId: record.clientId,
+        reviewRequired: record.requireApproval === true,
       };
       return new Response(JSON.stringify({ data: info }), {
         status: 200,
@@ -493,11 +497,21 @@ export const authRoutes = {
 
       // Refresh the browser cookie's max-age so an active session does not
       // expire client-side while the server-side TTL is being slid.
+      // Client sessions also report the LIVE review-mode flag (an admin
+      // toggle applies on the next page load, not just at sign-in).
+      let reviewRequired: boolean | null = null;
+      if ((session.kind ?? 'admin') === 'client' && session.clientId) {
+        const store = new ClientStore(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env));
+        const record = await store.get(session.clientId);
+        reviewRequired = record?.requireApproval === true;
+      }
       const info: SessionInfo = {
         user: session.user,
         kind: session.kind ?? 'admin',
         repoLock: session.repoLock ?? null,
         language: session.language ?? null,
+        clientId: session.clientId ?? null,
+        reviewRequired,
       };
       return new Response(JSON.stringify({ data: info }), {
         status: 200,

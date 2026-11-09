@@ -138,8 +138,14 @@ export function RepoTile(props: {
   className?: string;
   /** Platform live URLs (Cloudflare/Vercel) to try before the conventions. */
   liveUrls?: string[];
+  /**
+   * Show the Public/Private chip (tile size only). Callers rendering a
+   * synthetic repository (the client home's locked repo) pass false — the
+   * visibility flag would be fabricated, not real metadata.
+   */
+  showVisibility?: boolean;
 }): JSX.Element {
-  const { repo, onSelect, size = 'tile', className, liveUrls = [] } = props;
+  const { repo, onSelect, size = 'tile', className, liveUrls = [], showVisibility = true } = props;
   const { m } = useI18n();
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -323,7 +329,7 @@ export function RepoTile(props: {
       )}
       <span className="repo-thumb__label">
         <span className="repo-thumb__name">{repo.name}</span>
-        {size === 'tile' && (
+        {size === 'tile' && showVisibility && (
           <span className="repo-thumb__chip">
             {repo.isPrivate ? m.repositories.private : m.repositories.public}
           </span>

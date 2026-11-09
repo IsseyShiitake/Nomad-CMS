@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import type { ClientAccess, Repository } from '@cms/shared';
+import type { ClientAccess, Repository, ReviewPullRequest } from '@cms/shared';
 import {
   createClient,
   deleteClient,
   listClients,
   listRepositories,
+  listReviewPullRequests,
+  closeReviewPullRequest,
+  mergeReviewPullRequest,
   resetClientPassword,
   revokeClient,
+  setClientApproval,
   updateClientLanguage,
 } from '@/api';
 import { useAuth } from '@/services/auth';
+import { ApiClientError } from '@/api/client';
 import { useI18n, fmt, type Locale } from '@/i18n';
 import './Settings.css';
 import { HostingPlatformsCard } from './HostingPlatformsCard';
@@ -24,7 +29,9 @@ import { Spinner } from '@/ui/components/Spinner';
 type Credentials = { clientId: string; password: string };
 
 /** Pending destructive confirmation. */
-type PendingAction = { kind: 'revoke' | 'delete'; access: ClientAccess };
+type PendingAction =
+  | { kind: 'revoke' | 'delete'; access: ClientAccess }
+  | { kind: 'reject'; pull: ReviewPullRequest };
 
 /**
  * Settings page: client access management (admin only).
@@ -38,6 +45,8 @@ export function SettingsPage() {
   const { isLoading: authLoading, isAuthenticated, isAdmin, isClient, login } = useAuth();
   const [accesses, setAccesses] = useState<ClientAccess[]>([]);
   const [repositories, setRepositories] = useState<Repository[]>([]);
+  // Open review pull requests (client changes awaiting approval).
+  const [reviews, setReviews] = useState<ReviewPullRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,9 +70,14 @@ export function SettingsPage() {
     }
     setError(null);
     try {
-      const [clients, repos] = await Promise.all([listClients(), listRepositories()]);
+      const [clients, repos, pulls] = await Promise.all([
+        listClients(),
+        listRepositories(),
+        listReviewPullRequests().catch(() => [] as ReviewPullRequest[]),
+      ]);
       setAccesses(clients);
       setRepositories(repos);
+      setReviews(pulls);
       setRepoValue((current) => current || (repos.length > 0 ? `${repos[0]!.owner}/${repos[0]!.name}` : current));
     } catch {
       setError(m.settings.loadFailed);
@@ -128,8 +142,64 @@ export function SettingsPage() {
     }
   };
 
+  /** Toggles review mode (saves wait for approval) for one access. */
+  const handleToggleApproval = async (access: ClientAccess, requireApproval: boolean) => {
+    // Optimistic update; a failure rolls the row back and reloads.
+    setAccesses((current) =>
+      current.map((a) => (a.clientId === access.clientId ? { ...a, requireApproval } : a)),
+    );
+    try {
+      const updated = await setClientApproval(access.clientId, requireApproval);
+      setAccesses((current) =>
+        current.map((a) =>
+          a.clientId === updated.clientId ? { ...a, requireApproval: updated.requireApproval } : a,
+        ),
+      );
+    } catch {
+      await load();
+      setError(m.settings.actionFailed);
+    }
+  };
+
+  /** Approves a pending change: merges it and publishes. */
+  const handleApprove = async (pull: ReviewPullRequest) => {
+    setError(null);
+    try {
+      const result = await mergeReviewPullRequest(pull.owner, pull.repo, pull.number);
+      if (result.failures.length > 0) {
+        setError(m.settings.reviewApprovePublishFailed);
+      }
+      await load();
+    } catch (error) {
+      // Only a real conflict gets the resolve-on-GitHub explanation;
+      // anything else is a transient failure worth a plain retry.
+      if (error instanceof ApiClientError && error.code === 'review_conflict') {
+        setError(m.settings.reviewApproveFailed);
+      } else {
+        setError(m.settings.actionFailed);
+      }
+    }
+  };
+
+  /** Rejects a pending change (confirmed via dialog): closes it and resets the branch. */
+  const handleReject = async (pull: ReviewPullRequest) => {
+    setError(null);
+    try {
+      await closeReviewPullRequest(pull.owner, pull.repo, pull.number);
+      await load();
+    } catch {
+      setError(m.settings.reviewRejectFailed);
+    } finally {
+      setPending(null);
+    }
+  };
+
   const handleConfirm = async () => {
     if (!pending) return;
+    if (pending.kind === 'reject') {
+      await handleReject(pending.pull);
+      return;
+    }
     setError(null);
     try {
       if (pending.kind === 'revoke') {
@@ -187,6 +257,58 @@ export function SettingsPage() {
       </div>
 
       <HostingPlatformsCard />
+
+      <h3>{m.settings.reviewHeading}</h3>
+      <p className="page-status">{m.settings.reviewIntro}</p>
+
+      {!isLoading && reviews.length > 0 && (
+        <Card className="settings-card">
+          <div className="settings-table-wrap">
+            <table className="settings-table">
+              <thead>
+                <tr>
+                  <th>{m.settings.colLabel}</th>
+                  <th>{m.settings.colRepo}</th>
+                  <th>{m.settings.reviewColChange}</th>
+                  <th>{m.settings.colActions}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reviews.map((pull) => (
+                  <tr key={`${pull.owner}/${pull.repo}#${pull.number}`}>
+                    <td>{pull.label ?? pull.branch}</td>
+                    <td>
+                      {pull.owner}/{pull.repo}
+                    </td>
+                    <td>
+                      <a href={pull.url} target="_blank" rel="noreferrer">
+                        {m.settings.reviewView}
+                      </a>
+                    </td>
+                    <td className="settings-table__actions">
+                      <button
+                        type="button"
+                        className="btn btn--primary"
+                        onClick={() => void handleApprove(pull)}
+                      >
+                        {m.settings.reviewApprove}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--danger"
+                        onClick={() => setPending({ kind: 'reject', pull })}
+                      >
+                        {m.settings.reviewReject}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+      {!isLoading && reviews.length === 0 && <p className="page-status">{m.settings.reviewEmpty}</p>}
 
       <h3>{m.settings.clientsHeading}</h3>
       <p className="page-status">{m.settings.clientsIntro}</p>
@@ -269,6 +391,7 @@ export function SettingsPage() {
                       <th>{m.settings.colId}</th>
                       <th>{m.settings.colRepo}</th>
                       <th>{m.settings.colLanguage}</th>
+                      <th>{m.settings.colReview}</th>
                       <th>{m.settings.colCreated}</th>
                       <th>{m.settings.colStatus}</th>
                       <th>{m.settings.colActions}</th>
@@ -302,6 +425,21 @@ export function SettingsPage() {
                             <option value="fr">FR</option>
                             <option value="en">EN</option>
                           </select>
+                        </td>
+                        <td>
+                          <label className="settings-review-toggle">
+                            <input
+                              type="checkbox"
+                              checked={access.requireApproval === true}
+                              aria-label={fmt(m.settings.reviewToggleAria, { label: access.label })}
+                              onChange={(event) =>
+                                void handleToggleApproval(access, event.target.checked)
+                              }
+                            />
+                            <span>
+                              {access.requireApproval ? m.settings.reviewOn : m.settings.reviewOff}
+                            </span>
+                          </label>
                         </td>
                         <td>{new Date(access.createdAt).toLocaleDateString()}</td>
                         <td>
@@ -383,9 +521,27 @@ export function SettingsPage() {
 
       <ConfirmDialog
         open={pending !== null}
-        title={pending?.kind === 'delete' ? m.settings.confirmDeleteTitle : m.settings.confirmRevokeTitle}
-        message={pending?.kind === 'delete' ? m.settings.confirmDeleteMsg : m.settings.confirmRevokeMsg}
-        confirmLabel={pending?.kind === 'delete' ? m.common.delete : m.settings.revoke}
+        title={
+          pending?.kind === 'delete'
+            ? m.settings.confirmDeleteTitle
+            : pending?.kind === 'reject'
+              ? m.settings.confirmRejectTitle
+              : m.settings.confirmRevokeTitle
+        }
+        message={
+          pending?.kind === 'delete'
+            ? m.settings.confirmDeleteMsg
+            : pending?.kind === 'reject'
+              ? m.settings.confirmRejectMsg
+              : m.settings.confirmRevokeMsg
+        }
+        confirmLabel={
+          pending?.kind === 'delete'
+            ? m.common.delete
+            : pending?.kind === 'reject'
+              ? m.settings.reviewReject
+              : m.settings.revoke
+        }
         onConfirm={() => void handleConfirm()}
         onCancel={() => setPending(null)}
       />

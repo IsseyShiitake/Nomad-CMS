@@ -83,6 +83,16 @@ interface GitHubWriteResponse {
   };
 }
 
+/** Pull request shape (only the fields the review workflow uses). */
+export interface GitHubPullRequest {
+  number: number;
+  title: string;
+  html_url: string;
+  head: { ref: string };
+  base: { ref: string };
+  updated_at: string | null;
+}
+
 /** Upper bound on upstream API latency before the request is aborted. */
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -186,6 +196,10 @@ export class GitHubClient {
       const body = await response.text();
       throw new GitHubError(response.status, `GitHub API ${response.status}: ${body.slice(0, 300)}`);
     }
+    // 204 No Content (e.g. ref deletion) has no body to parse.
+    if (response.status === 204) {
+      return undefined as T;
+    }
     return (await response.json()) as T;
   }
 
@@ -260,11 +274,17 @@ export class GitHubClient {
     return hasHtml || data.truncated;
   }
 
-  /** Lists files and directories at a repository path. */
-  async listContents(owner: string, repo: string, path: string): Promise<RepositoryFile[]> {
+  /** Lists files and directories at a repository path (optionally at a ref). */
+  async listContents(
+    owner: string,
+    repo: string,
+    path: string,
+    ref?: string,
+  ): Promise<RepositoryFile[]> {
     const encodedPath = path ? `/${encodePath(path)}` : '';
+    const refQuery = ref ? `?ref=${encodeURIComponent(ref)}` : '';
     const data: GitHubContentEntry[] = await this.request(
-      `/repos/${owner}/${repo}/contents${encodedPath}`,
+      `/repos/${owner}/${repo}/contents${encodedPath}${refQuery}`,
     );
     return data.map((entry) => ({
       path: entry.path,
@@ -275,10 +295,11 @@ export class GitHubClient {
     }));
   }
 
-  /** Reads a file's raw decoded content from a repository. */
-  async readFile(owner: string, repo: string, path: string): Promise<ReadFileResult> {
+  /** Reads a file's raw decoded content from a repository (optionally at a ref). */
+  async readFile(owner: string, repo: string, path: string, ref?: string): Promise<ReadFileResult> {
+    const refQuery = ref ? `?ref=${encodeURIComponent(ref)}` : '';
     const data: GitHubFile = await this.request(
-      `/repos/${owner}/${repo}/contents/${encodePath(path)}`,
+      `/repos/${owner}/${repo}/contents/${encodePath(path)}${refQuery}`,
     );
 
     // GitHub's contents API returns HTTP 200 with an EMPTY content string
@@ -309,7 +330,7 @@ export class GitHubClient {
   }
 
   /**
-   * Reads a repository file as raw bytes from its default branch.
+   * Reads a repository file as raw bytes (default branch, or a given ref).
    *
    * Unlike `readFile` this returns binary content untouched (no base64
    * round-trip, no UTF-8 decode), so it serves images, fonts, and any
@@ -317,9 +338,9 @@ export class GitHubClient {
    * private repositories too. The fixed ref "HEAD" resolves to the
    * repository's default branch without a prior metadata request.
    */
-  async readRawFile(owner: string, repo: string, path: string): Promise<Uint8Array> {
+  async readRawFile(owner: string, repo: string, path: string, ref?: string): Promise<Uint8Array> {
     const response = await fetch(
-      `https://raw.githubusercontent.com/${owner}/${repo}/HEAD/${encodePath(path)}`,
+      `https://raw.githubusercontent.com/${owner}/${repo}/${ref ? encodeURIComponent(ref) : 'HEAD'}/${encodePath(path)}`,
       {
         headers: {
           Authorization: `Bearer ${this.token}`,
@@ -338,7 +359,9 @@ export class GitHubClient {
    *
    * Uses the GitHub contents API. When `sha` is provided the write
    * is optimistic: GitHub rejects it with a 409 (surfaced as a
-   * MergeConflictError) if the remote file has changed.
+   * MergeConflictError) if the remote file has changed. An optional
+   * `branch` targets a non-default branch (the review workflow writes to
+   * `cms/<clientId>` branches this way).
    */
   async writeFile(
     owner: string,
@@ -347,6 +370,7 @@ export class GitHubClient {
     content: string,
     sha: string | null,
     message: string,
+    branch?: string,
   ): Promise<{ path: string; sha: string }> {
     const body: Record<string, string> = {
       message,
@@ -354,6 +378,9 @@ export class GitHubClient {
     };
     if (sha) {
       body.sha = sha;
+    }
+    if (branch) {
+      body.branch = branch;
     }
 
     const data: GitHubWriteResponse = await this.request(
@@ -385,6 +412,7 @@ export class GitHubClient {
     mimeType: string,
     message: string,
     existingSha: string | null = null,
+    branch?: string,
   ): Promise<ImageAsset> {
     const body: Record<string, string> = {
       message,
@@ -392,6 +420,9 @@ export class GitHubClient {
     };
     if (existingSha) {
       body.sha = existingSha;
+    }
+    if (branch) {
+      body.branch = branch;
     }
 
     const data: GitHubWriteResponse = await this.request(
@@ -412,6 +443,124 @@ export class GitHubClient {
       updatedAt: null,
     };
   }
+  /**
+   * Review-workflow branch and pull-request helpers.
+   *
+   * These power the approval mode: client saves land on a `cms/<clientId>`
+   * branch and surface through one open pull request to the default branch.
+   */
+
+  /** The commit sha a ref (branch name or HEAD) currently points at. */
+  async getCommitSha(owner: string, repo: string, ref = 'HEAD'): Promise<string> {
+    const data: { sha: string } = await this.request(
+      `/repos/${owner}/${repo}/commits/${encodeURIComponent(ref)}`,
+    );
+    return data.sha;
+  }
+
+  /** A branch's head commit sha, or null when the branch does not exist. */
+  async getBranchHead(owner: string, repo: string, branch: string): Promise<string | null> {
+    try {
+      const data: { commit: { sha: string } } = await this.request(
+        `/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}`,
+      );
+      return data.commit.sha;
+    } catch (error) {
+      if (error instanceof GitHubError && error.status === 404) return null;
+      throw error;
+    }
+  }
+
+  /** Creates a branch pointing at the given commit sha. */
+  async createBranch(owner: string, repo: string, branch: string, sha: string): Promise<void> {
+    await this.request(`/repos/${owner}/${repo}/git/refs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }),
+    });
+  }
+
+  /** Deletes a branch (used to reset a review branch after rejection). */
+  async deleteBranch(owner: string, repo: string, branch: string): Promise<void> {
+    await this.request(
+      `/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  /** The open pull request for a head branch, or null. */
+  async findOpenPullRequest(owner: string, repo: string, branch: string): Promise<GitHubPullRequest | null> {
+    const data: GitHubPullRequest[] = await this.request(
+      `/repos/${owner}/${repo}/pulls?state=open&head=${encodeURIComponent(`${owner}:${branch}`)}`,
+    );
+    return data[0] ?? null;
+  }
+
+  /** A single pull request by number (any state). */
+  async getPullRequest(owner: string, repo: string, number: number): Promise<GitHubPullRequest> {
+    return this.request<GitHubPullRequest>(`/repos/${owner}/${repo}/pulls/${number}`);
+  }
+
+  /** All open pull requests (the admin's review queue lists cms/* ones). */
+  async listOpenPullRequests(owner: string, repo: string): Promise<GitHubPullRequest[]> {
+    const data: GitHubPullRequest[] = await this.request(
+      `/repos/${owner}/${repo}/pulls?state=open&per_page=100`,
+    );
+    return data;
+  }
+
+  /** Opens a pull request from `head` into `base`. */
+  async createPullRequest(
+    owner: string,
+    repo: string,
+    head: string,
+    base: string,
+    title: string,
+    body: string,
+  ): Promise<GitHubPullRequest> {
+    return this.request<GitHubPullRequest>(`/repos/${owner}/${repo}/pulls`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, body, head, base }),
+    });
+  }
+
+  /**
+   * Merges the base branch into a pull request's branch (best-effort
+   * staleness clearance before merging). A no-op update or a conflict both
+   * surface as GitHubError 422 — the caller proceeds to merge and lets a
+   * real conflict fail there.
+   */
+  async updatePullRequestBranch(owner: string, repo: string, number: number): Promise<void> {
+    await this.request(`/repos/${owner}/${repo}/pulls/${number}/update-branch`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expected_head_sha: null }),
+    });
+  }
+
+  /**
+   * Merges a pull request with a merge commit. Throws GitHubError 405 when
+   * the pull request is not mergeable (conflicts) — the caller maps that to
+   * a "resolve on GitHub" response.
+   */
+  async mergePullRequest(owner: string, repo: string, number: number): Promise<void> {
+    await this.request(`/repos/${owner}/${repo}/pulls/${number}/merge`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ merge_method: 'merge' }),
+    });
+  }
+
+  /** Closes a pull request without merging (the reject action). */
+  async closePullRequest(owner: string, repo: string, number: number): Promise<void> {
+    await this.request(`/repos/${owner}/${repo}/pulls/${number}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: 'closed' }),
+    });
+  }
+
   /** Maps a GitHub repo object to the shared Repository type. */
   private mapRepository(repo: GitHubRepo): Repository {
     return {

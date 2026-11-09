@@ -189,3 +189,188 @@ describe('InMemoryEditorController save/undo race', () => {
     expect(controller.isDirty).toBe(false);
   });
 });
+
+describe('InMemoryEditorController save guards', () => {
+  const noUploads: ImageManager = {
+    uploadImage: async () => {
+      throw new Error('should not upload');
+    },
+    listImages: async () => [],
+  };
+
+  async function loadedController(content: string) {
+    const controller = new InMemoryEditorController({
+      parser: new DomHtmlParser(),
+      owner: 'octocat',
+      repo: 'site',
+      imageManager: noUploads,
+    });
+    vi.mocked(getPage).mockResolvedValue({
+      path: 'index.html',
+      content,
+      sha: 'sha-1',
+      updatedAt: null,
+    });
+    await controller.loadPage('index.html', 'generic');
+    return controller;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('blocks saving while an inserted image still has the placeholder src', async () => {
+    const controller = await loadedController(FIXTURE);
+    const img = controller.document!.elements.find((e) => e.tagName === 'img')!;
+
+    const outcome = controller.applyEdit({
+      elementId: img.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'img',
+    });
+    expect(outcome.error).toBeNull();
+
+    await controller.save();
+    expect(controller.saveError).toBe('placeholder_image');
+    expect(controller.isDirty).toBe(true);
+    // Nothing reached the backend.
+    expect(savePage).not.toHaveBeenCalled();
+  });
+
+  it('allows saving when the placeholder image has a pending upload', async () => {
+    const controller = await loadedController(FIXTURE);
+    const img = controller.document!.elements.find((e) => e.tagName === 'img')!;
+    controller.applyEdit({ elementId: img.id, type: 'insert-below', value: null, insertTag: 'img' });
+
+    // Element ids re-qualify with :nth-of-type once a same-tag sibling is
+    // added, so locate the inserted image by its placeholder src.
+    const inserted = controller.document!.elements.find(
+      (e) => e.src === '/images/placeholder.png',
+    )!;
+    controller.registerImageUpload(
+      inserted.id,
+      new File([new Uint8Array([1])], 'pic.png', { type: 'image/png' }),
+    );
+    const uploadManager: ImageManager = {
+      uploadImage: async () => ({
+        path: 'images/pic.png',
+        name: 'pic.png',
+        size: 1,
+        mimeType: 'image/png',
+        sha: 'sha',
+        updatedAt: null,
+      }),
+      listImages: async () => [],
+    };
+    (controller as unknown as { imageManager: ImageManager }).imageManager = uploadManager;
+
+    vi.mocked(savePage).mockResolvedValueOnce({ success: true, sha: 'sha-2', error: null });
+    await controller.save();
+    expect(controller.saveError).toBeNull();
+    expect(savePage).toHaveBeenCalledTimes(1);
+    const committed = vi.mocked(savePage).mock.calls[0]![3];
+    expect(committed).toContain('images/pic.png');
+  });
+
+  it('blocks saving while an inserted element still carries its placeholder text', async () => {
+    const controller = await loadedController(FIXTURE);
+    const h1 = controller.document!.elements.find((e) => e.tagName === 'h1')!;
+    const outcome = controller.applyEdit({
+      elementId: h1.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'p',
+    });
+    expect(outcome.error).toBeNull();
+
+    await controller.save();
+    expect(controller.saveError).toBe('placeholder_text');
+    expect(savePage).not.toHaveBeenCalled();
+  });
+
+  it('saves normally once the placeholder text is edited', async () => {
+    const controller = await loadedController(FIXTURE);
+    const h1 = controller.document!.elements.find((e) => e.tagName === 'h1')!;
+    controller.applyEdit({ elementId: h1.id, type: 'insert-below', value: null, insertTag: 'p' });
+    const inserted = controller.document!.elements.find(
+      (e) => e.tagName === 'p' && e.id !== h1.id,
+    )!;
+    controller.applyEdit({ elementId: inserted.id, type: 'edit-text', value: 'Real content' });
+
+    vi.mocked(savePage).mockResolvedValueOnce({ success: true, sha: 'sha-2', error: null });
+    await controller.save();
+    expect(controller.saveError).toBeNull();
+    expect(controller.isDirty).toBe(false);
+  });
+});
+
+describe('InMemoryEditorController flatten detection', () => {
+  const MARKUP_FIXTURE = `<!doctype html>
+<html><head><title>T</title></head><body>
+  <h1>Hello</h1>
+  <p>Call <a href="tel:+331">+33 1</a> or write to <a href="mailto:a@b.fr">a@b.fr</a>.</p>
+</body></html>`;
+
+  async function markupController() {
+    const controller = new InMemoryEditorController({
+      parser: new DomHtmlParser(),
+      owner: 'octocat',
+      repo: 'site',
+      imageManager: {
+        uploadImage: async () => {
+          throw new Error('no uploads here');
+        },
+        listImages: async () => [],
+      },
+    });
+    vi.mocked(getPage).mockResolvedValue({
+      path: 'index.html',
+      content: MARKUP_FIXTURE,
+      sha: 'sha-1',
+      updatedAt: null,
+    });
+    await controller.loadPage('index.html', 'generic');
+    return controller;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('flags an edit to an element that contained links', async () => {
+    const controller = await markupController();
+    expect(controller.flattenedMarkupEdits()).toEqual([]);
+
+    const linked = controller.document!.elements.find((e) =>
+      e.textContent?.includes('Call'),
+    )!;
+    controller.applyEdit({ elementId: linked.id, type: 'edit-text', value: 'Call us.' });
+
+    const flagged = controller.flattenedMarkupEdits();
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]!.tagName).toBe('p');
+    expect(flagged[0]!.preview).toContain('Call');
+  });
+
+  it('does not flag edits to plain elements or untouched markup elements', async () => {
+    const controller = await markupController();
+    const h1 = controller.document!.elements.find((e) => e.tagName === 'h1')!;
+    controller.applyEdit({ elementId: h1.id, type: 'edit-text', value: 'New heading' });
+    // The linked paragraph still has its markup and was not edited.
+    expect(controller.flattenedMarkupEdits()).toEqual([]);
+  });
+
+  it('clears detection after a successful save (the flattening is committed)', async () => {
+    const controller = await markupController();
+    const linked = controller.document!.elements.find((e) =>
+      e.textContent?.includes('Call'),
+    )!;
+    controller.applyEdit({ elementId: linked.id, type: 'edit-text', value: 'Call us.' });
+    expect(controller.flattenedMarkupEdits()).toHaveLength(1);
+
+    vi.mocked(savePage).mockResolvedValueOnce({ success: true, sha: 'sha-2', error: null });
+    await controller.save();
+    expect(controller.flattenedMarkupEdits()).toEqual([]);
+  });
+});

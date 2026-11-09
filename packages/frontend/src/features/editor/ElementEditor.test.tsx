@@ -20,6 +20,7 @@ const TEXT_ELEMENT: EditableElement = {
   tagName: 'p',
   textContent: 'Hello',
   src: null,
+  containsMarkup: false,
   selector: 'p',
 };
 
@@ -28,6 +29,7 @@ const IMAGE_ELEMENT: EditableElement = {
   tagName: 'img',
   textContent: null,
   src: '/old.png',
+  containsMarkup: false,
   selector: 'img',
 };
 
@@ -72,6 +74,15 @@ function renderElement(
     </I18nProvider>,
   );
 }
+
+const MARKUP_ELEMENT: EditableElement = {
+  id: 'el--p-link',
+  tagName: 'p',
+  textContent: 'Call +33 1 or write to a@b.fr.',
+  src: null,
+  containsMarkup: true,
+  selector: 'p:nth-of-type(2)',
+};
 
 afterEach(() => {
   cleanup();
@@ -184,5 +195,41 @@ describe('ElementEditor active state', () => {
     renderElement(TEXT_ELEMENT, 'en', false, onActivate);
     fireEvent.click(screen.getByRole('textbox'));
     expect(onActivate).toHaveBeenCalledWith('el--p');
+  });
+});
+
+describe('ElementEditor inline-markup warning', () => {
+  it('shows the contains-formatting badge only for markup elements', () => {
+    renderElement(MARKUP_ELEMENT);
+    expect(screen.getByText(/contains a link/i)).toBeTruthy();
+    // No warning yet: the text has not been edited.
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('warns once the markup element\u2019s text is edited', () => {
+    const view = renderElement(MARKUP_ELEMENT);
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    // The parent re-renders the row with the edited (flattened) text.
+    view.rerender(
+      <I18nProvider>
+        <LocaleSetter locale="en">
+          <ul>
+            <ElementEditor
+              element={{ ...MARKUP_ELEMENT, textContent: 'Call us.', containsMarkup: false }}
+              callbacks={makeCallbacks()}
+              isActive={false}
+              onActivate={() => {}}
+            />
+          </ul>
+        </LocaleSetter>
+      </I18nProvider>,
+    );
+    expect(screen.getByRole('alert').textContent).toMatch(/plain text/i);
+  });
+
+  it('never shows the badge for plain elements', () => {
+    renderElement(TEXT_ELEMENT);
+    expect(screen.queryByText(/contains a link/i)).toBeNull();
   });
 });

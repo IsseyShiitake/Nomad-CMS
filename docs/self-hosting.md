@@ -146,6 +146,27 @@ repeated wrong attempts, and can be revoked any time. Clients edit only
 what you granted — they never see your GitHub token, and the admin role is
 impossible for them.
 
+### Require approval (review mode)
+
+Each client access has an **Approval** toggle (Settings → Client access).
+With it on, that client's saves never touch the production branch:
+
+1. Each save commits to their own `cms/<access-id>` branch and keeps one
+   open pull request to the production branch (updated per save).
+2. The client sees their own pending version in the editor; a banner tells
+   them their changes wait for approval.
+3. You approve in Settings → **Pending reviews** (or on GitHub): merging
+   publishes the change — platform-connected sites redeploy automatically,
+   git-integrated sites build from the merged branch as usual. Rejecting
+   closes the pull request and resets the branch, so the client's next save
+   starts fresh; rejected changes never come back.
+
+Review mode needs push access to the repository (it creates branches and
+pull requests with your GitHub token). Vercel direct-upload projects have
+no branches, so the toggle is not offered for them. One client pending per
+repository is the recommended setup: two review branches on one repository
+can conflict with each other when both are approved.
+
 ## Publishing integrations (optional)
 
 Editing requires nothing but GitHub. If your site builds on Cloudflare

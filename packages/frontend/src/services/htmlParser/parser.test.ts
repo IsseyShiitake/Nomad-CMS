@@ -283,3 +283,240 @@ describe('DomHtmlParser editable mode', () => {
     expect(outcome.document?.sourceHtml).toContain('<p data-editable="">New p</p>');
   });
 });
+
+describe('DomHtmlParser sibling adoption', () => {
+  const GALLERY_FIXTURE = `<!doctype html>
+<html>
+  <body>
+    <div class="gallery-row">
+      <img src="images/a.png" class="tile" width="200" height="200" loading="lazy">
+      <img src="images/b.png" class="tile" width="200" height="200" loading="lazy">
+    </div>
+    <section class="hero">
+      <p class="lead">First</p>
+      <p class="lead">Second</p>
+    </section>
+    <p id="solo-unique">Solo paragraph</p>
+  </body>
+</html>
+`;
+
+  it('an inserted image adopts class and sizing from the sibling it joins', () => {
+    const doc = parser.parse(GALLERY_FIXTURE, 'generic');
+    const firstImg = doc.elements.find((e) => e.tagName === 'img')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: firstImg.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'img',
+    });
+    expect(outcome.error).toBeNull();
+    // Class and image sizing come from the template sibling; src stays the placeholder.
+    expect(outcome.document?.sourceHtml).toContain(
+      '<img src="/images/placeholder.png" alt="" class="tile" width="200" height="200" loading="lazy">',
+    );
+  });
+
+  it('an inserted paragraph adopts the class of its same-tag siblings', () => {
+    const doc = parser.parse(GALLERY_FIXTURE, 'generic');
+    const firstP = doc.elements.find((e) => e.tagName === 'p')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: firstP.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'p',
+    });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml).toContain('<p class="lead">New p</p>');
+  });
+
+  it('inserts stay plain when no same-tag sibling exists', () => {
+    const doc = parser.parse(GALLERY_FIXTURE, 'generic');
+    const solo = doc.elements.find((e) => e.textContent === 'Solo paragraph')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: solo.id,
+      type: 'insert-above',
+      value: null,
+      insertTag: 'p',
+    });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml).toContain('<p>New p</p>');
+  });
+
+  it('does not adopt a class when the created tag has no sibling of its own tag', () => {
+    const doc = parser.parse(GALLERY_FIXTURE, 'generic');
+    const firstP = doc.elements.find((e) => e.textContent === 'First')!;
+
+    // Inserting an image below a classed paragraph must NOT give the image
+    // the paragraph's class — the template matches the CREATED tag only.
+    const outcome = parser.apply(doc, {
+      elementId: firstP.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'img',
+    });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml).toContain(
+      '<img src="/images/placeholder.png" alt="">',
+    );
+  });
+
+  it('adopts from the anchor itself when it is the only element of that tag', () => {
+    const single = `<!doctype html>
+<html><body>
+  <figure class="spotlight">
+    <img src="images/one.png" class="big" width="800" height="600">
+  </figure>
+</body></html>`;
+    const doc = parser.parse(single, 'generic');
+    const img = doc.elements.find((e) => e.tagName === 'img')!;
+
+    // The audit's motivating case: one picture, add another next to it —
+    // the anchor is the template.
+    const outcome = parser.apply(doc, {
+      elementId: img.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'img',
+    });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml).toContain(
+      '<img src="/images/placeholder.png" alt="" class="big" width="800" height="600">',
+    );
+  });
+
+  it('never copies identity attributes from the sibling', () => {
+    const doc = parser.parse(GALLERY_FIXTURE, 'generic');
+    const solo = doc.elements.find((e) => e.textContent === 'Solo paragraph')!;
+    const outcome = parser.apply(doc, {
+      elementId: solo.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'p',
+    });
+    expect(outcome.error).toBeNull();
+    // The created element has no id even though the anchor carries one.
+    expect(outcome.document?.sourceHtml.match(/<p[^>]*id=/g)?.length ?? 0).toBe(1);
+  });
+});
+
+describe('DomHtmlParser shorthand-attribute tolerance', () => {
+  const SHORTHAND_FIXTURE = `<!doctype html>
+<html lang="en">
+  <body>
+    <section class="hero">
+      <h1 data-editable>Handmade ceramics</h1>
+      <p data-editable>Every piece is thrown by hand.</p>
+    </section>
+  </body>
+</html>
+`;
+
+  it('edits an element surgically even when the source writes attributes bare', () => {
+    const doc = parser.parse(SHORTHAND_FIXTURE, 'editable');
+    const h1 = doc.elements.find((e) => e.tagName === 'h1')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: h1.id,
+      type: 'edit-text',
+      value: 'Handmade ceramics, fired weekly',
+    });
+    expect(outcome.error).toBeNull();
+    // The rest of the document is untouched — no whole-file re-serialization:
+    // the shorthand paragraph keeps its bare attribute and formatting.
+    expect(outcome.document?.sourceHtml).toBe(
+      SHORTHAND_FIXTURE.replace(
+        '<h1 data-editable>Handmade ceramics</h1>',
+        '<h1 data-editable="">Handmade ceramics, fired weekly</h1>',
+      ),
+    );
+  });
+
+  it('inserts beside a shorthand-attr element without reformatting the file', () => {
+    const doc = parser.parse(SHORTHAND_FIXTURE, 'editable');
+    const h1 = doc.elements.find((e) => e.tagName === 'h1')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: h1.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'p',
+    });
+    expect(outcome.error).toBeNull();
+    // The anchor keeps the author's bare-attribute form byte-for-byte.
+    expect(outcome.document?.sourceHtml).toContain('<h1 data-editable>Handmade ceramics</h1>');
+    expect(outcome.document?.sourceHtml).toContain('<p data-editable="">New p</p>');
+  });
+
+  it('deleting a shorthand-attr element leaves no stray line', () => {
+    const doc = parser.parse(SHORTHAND_FIXTURE, 'editable');
+    const h1 = doc.elements.find((e) => e.tagName === 'h1')!;
+
+    const outcome = parser.apply(doc, { elementId: h1.id, type: 'delete', value: null });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml).toBe(
+      SHORTHAND_FIXTURE.replace('      <h1 data-editable>Handmade ceramics</h1>\n', ''),
+    );
+  });
+});
+
+describe('DomHtmlParser delete hygiene', () => {
+  it('removes the whole line of an element that sat alone on it', () => {
+    const source = `<body>\n  <p>Keep</p>\n  <p>Drop me</p>\n  <p>Also keep</p>\n</body>`;
+    const doc = parser.parse(source, 'generic');
+    const drop = doc.elements.find((e) => e.textContent === 'Drop me')!;
+
+    const outcome = parser.apply(doc, { elementId: drop.id, type: 'delete', value: null });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml).toBe(`<body>\n  <p>Keep</p>\n  <p>Also keep</p>\n</body>`);
+  });
+
+  it('removes only the element when it sits inline with other content', () => {
+    const source = `<body><p>Before</p> <p>Drop me</p> <p>After</p></body>`;
+    const doc = parser.parse(source, 'generic');
+    const drop = doc.elements.find((e) => e.textContent === 'Drop me')!;
+
+    const outcome = parser.apply(doc, { elementId: drop.id, type: 'delete', value: null });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml).toBe(
+      `<body><p>Before</p>  <p>After</p></body>`,
+    );
+  });
+});
+
+describe('DomHtmlParser fallback serialization', () => {
+  it('preserves the trailing newline when falling back to re-serialization', () => {
+    // Duplicate markup forces the fallback path (ambiguous needle).
+    const source = `<body><p>Same</p><p>Same</p></body>\n`;
+    const doc = parser.parse(source, 'generic');
+    const first = doc.elements[0]!;
+
+    const outcome = parser.apply(doc, {
+      elementId: first.id,
+      type: 'edit-text',
+      value: 'Changed',
+    });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml.endsWith('\n')).toBe(true);
+  });
+});
+
+describe('DomHtmlParser inline-markup flag', () => {
+  it('marks elements containing links or emphasis, and clears the flag after an edit', () => {
+    const source = `<body><p>Call <a href="tel:1">123</a> now</p><p>Plain</p></body>`;
+    const doc = parser.parse(source, 'generic');
+    expect(doc.elements.map((e) => e.containsMarkup)).toEqual([true, false]);
+
+    const linked = doc.elements[0]!;
+    const outcome = parser.apply(doc, {
+      elementId: linked.id,
+      type: 'edit-text',
+      value: 'Call 123 now',
+    });
+    // After the flattening edit the markup is gone, so the re-parse reports false.
+    expect(outcome.document?.elements.find((e) => e.id === linked.id)?.containsMarkup).toBe(false);
+  });
+});

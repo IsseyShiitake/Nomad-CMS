@@ -13,6 +13,7 @@
  *   POST   /:id/reset-password  — reset a password (returns one-time password)
  *   POST   /:id/revoke          — revoke an access
  *   POST   /:id/language        — set the preferred UI language ('en' | 'fr')
+ *   POST   /:id/approval        — toggle review mode (saves wait for approval)
  *   DELETE /:id                 — permanently delete an access
  */
 
@@ -186,6 +187,27 @@ export const clientsRoutes = {
       }
 
       const updated = await store.update(clientId, { language });
+      if (!updated) return jsonError('not_found', 'Client access not found', 404);
+      return json(store.toAccess(updated));
+    }
+
+    // POST /:id/approval — toggle review mode for this access.
+    //
+    // Review mode routes the client's saves to a cms/<clientId> branch and a
+    // pull request instead of the production branch; the admin approves by
+    // merging (see /api/review). Applies to every future save immediately —
+    // the save path reads this record, not the session snapshot.
+    if (segments.length === 2 && segments[1] === 'approval' && request.method === 'POST') {
+      const body = (await request.json().catch(() => null)) as {
+        requireApproval?: unknown;
+      } | null;
+      if (typeof body?.requireApproval !== 'boolean') {
+        return jsonError('invalid_input', 'requireApproval (boolean) is required', 400);
+      }
+
+      const updated = await store.update(clientId, {
+        requireApproval: body.requireApproval,
+      });
       if (!updated) return jsonError('not_found', 'Client access not found', 404);
       return json(store.toAccess(updated));
     }

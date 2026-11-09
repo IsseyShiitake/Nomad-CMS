@@ -22,11 +22,13 @@ A lightweight CMS for editing static HTML websites stored in GitHub repositories
 - **HTML page discovery** — find all HTML files in a repository.
 - **DOM-based HTML scanner** — detect editable elements (h1, h2, p, img, `data-editable`).
 - **In-browser editor** — edit text, replace images, delete/insert elements with a live preview.
+- **Harmony on insert** — new elements adopt the classes and image sizing of the siblings they join, so additions match the site's design (the site's own CSS stays the design authority).
+- **Save guards** — the editor refuses to commit a picture that was never uploaded or starter text like "New p".
 - **Save & commit** — commit changes back to GitHub with a clear message.
 - **Image upload** — upload local images and reference them in your pages.
 - **Merge conflict handling** — surfaces conflicts so you can reload and re-apply.
 - **Publish to Cloudflare Pages & Vercel** — connect your platform accounts, trigger production deployments after each save, and follow build status to the live URL. Vercel projects without a Git repository are editable directly.
-- **Client accesses** — hand out restricted logins (locked to one repository, with their own UI language) to other people.
+- **Client accesses with optional review mode** — hand out restricted logins (locked to one repository, with their own UI language) to other people; flip "Require approval" and their saves land on a review branch with a pull request instead of the production branch — nothing goes live until you approve the merge (or reject and reset).
 - **Security-first** — GitHub and platform credentials never reach the frontend.
 
 ## Run your own instance

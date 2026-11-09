@@ -61,6 +61,14 @@ export function ElementEditor({
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
 
+  // Captured on mount: whether this element arrived with inline markup. The
+  // parser recomputes containsMarkup on every parse (false after the first
+  // edit), so the "edit will flatten" warning must remember the original.
+  const hadInlineMarkup = useRef(element.containsMarkup);
+  const originalText = useRef(element.textContent);
+  const markupWarningVisible =
+    hadInlineMarkup.current && element.textContent !== originalText.current;
+
   /** Refs: hidden image picker, auto-growing textarea, and the row itself. */
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const liRef = useRef<HTMLLIElement | null>(null);
@@ -120,6 +128,11 @@ export function ElementEditor({
     >
       <div className="editor-element__top">
         <span className={badgeClass}>{typeLabel}</span>
+        {hadInlineMarkup.current && (
+          <span className="editor-element__markup" title={m.editor.containsFormatting}>
+            {m.editor.containsFormatting}
+          </span>
+        )}
         <button
           type="button"
           className="editor-element__delete"
@@ -172,15 +185,22 @@ export function ElementEditor({
             />
           </>
         ) : (
-          <textarea
-            ref={textAreaRef}
-            className="editor-element__textarea"
-            rows={1}
-            value={textValue ?? ''}
-            placeholder={fmt(m.editor.textPlaceholder, { tag: element.tagName })}
-            aria-label={fmt(m.editor.textPlaceholder, { tag: element.tagName })}
-            onChange={(event) => callbacks.onEditText(element.id, event.target.value)}
-          />
+          <>
+            <textarea
+              ref={textAreaRef}
+              className="editor-element__textarea"
+              rows={1}
+              value={textValue ?? ''}
+              placeholder={fmt(m.editor.textPlaceholder, { tag: element.tagName })}
+              aria-label={fmt(m.editor.textPlaceholder, { tag: element.tagName })}
+              onChange={(event) => callbacks.onEditText(element.id, event.target.value)}
+            />
+            {markupWarningVisible && (
+              <span className="editor-element__filename editor-element__file-error" role="alert">
+                {m.editor.markupWarning}
+              </span>
+            )}
+          </>
         )}
       </div>
 

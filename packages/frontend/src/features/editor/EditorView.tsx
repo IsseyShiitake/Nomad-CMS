@@ -13,6 +13,7 @@ import { InMemoryEditorController } from '@/services/editorState';
 import { ApiImageManager } from '@/services/images';
 import { ErrorBanner } from '@/ui/components/ErrorBanner';
 import { Spinner } from '@/ui/components/Spinner';
+import { ConfirmDialog } from '@/ui/components/ConfirmDialog';
 import { ElementEditor, type ElementEditorCallbacks } from './ElementEditor';
 import './EditorMood.css';
 
@@ -50,6 +51,8 @@ export function describeSaveError(code: string | null, m: Messages): string | nu
   if (code == null) return null;
   if (code === 'merge_conflict') return m.editor.modifiedElsewhere;
   if (code === 'rate_limited') return m.editor.saveRateLimited;
+  if (code === 'placeholder_image') return m.editor.placeholderImageBlocked;
+  if (code === 'placeholder_text') return m.editor.placeholderTextBlocked;
   if (code === 'file_too_large' || code === 'invalid_content' || code === 'invalid_path' || code === 'repo_too_large') {
     return m.editor.saveRejected;
   }
@@ -90,7 +93,7 @@ export function EditorView({
   backLabel: string;
 }) {
   const { m } = useI18n();
-  const { isAuthenticated, isLoading: authLoading, isAdmin, login } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, isAdmin, login, session } = useAuth();
 
   // Auto-publish: after a successful save, trigger production deployments on
   // every platform linked to the repository (admin sessions only; the panel
@@ -139,6 +142,13 @@ export function EditorView({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [canUndo, setCanUndo] = useState(false);
+  // Review mode: pull-request URL of this client's pending change.
+  const [pendingApprovalUrl, setPendingApprovalUrl] = useState<string | null>(null);
+  // Pending flatten confirmation: saving would strip links/formatting from
+  // these edited elements (shown with an explicit confirm dialog).
+  const [pendingFlatten, setPendingFlatten] = useState<
+    Array<{ tagName: string; preview: string }> | null
+  >(null);
 
   // Preview options: beacon highlighting (default on), device width, and
   // manual zoom (null = auto-fit to the panel width).
@@ -330,6 +340,7 @@ export function EditorView({
     setSaveError(controller.saveError);
     setIsSaving(controller.isSaving);
     setCanUndo(controller.canUndo);
+    setPendingApprovalUrl(controller.pendingApprovalUrl);
   }, [controller]);
 
   /** Applies an operation in memory and refreshes the editor state. */
@@ -356,20 +367,36 @@ export function EditorView({
     [controller, syncFromController, m],
   );
 
-  /** Saves the current document, then auto-publishes when the repo is linked.
-   * The synchronous in-flight check keeps a second click from racing the
-   * first save (the React isSaving state only updates after the await). */
-  const handleSave = useCallback(async () => {
+  /** Saves the current document. Direct saves auto-publish when the repo is
+   * linked; review-mode saves wait for approval instead (nothing is on the
+   * production branch yet, so publishing would be a no-op). The synchronous
+   * in-flight check keeps a second click from racing the first save. */
+  const performSave = useCallback(async () => {
     if (!controller || controller.isSaving || !controller.isDirty) return;
     setMessage(null);
     setIsSaving(true);
     await controller.save();
     syncFromController();
     if (!controller.saveError) {
-      setMessage(messagesRef.current.editor.saved);
-      void autoPublish();
+      if (controller.pendingApprovalUrl) {
+        setMessage(messagesRef.current.editor.submittedForApproval);
+      } else {
+        setMessage(messagesRef.current.editor.saved);
+        void autoPublish();
+      }
     }
   }, [controller, syncFromController, autoPublish]);
+
+  /** Save entry point: asks for confirmation when edits would strip links. */
+  const handleSave = useCallback(() => {
+    if (!controller) return;
+    const flatten = controller.flattenedMarkupEdits();
+    if (flatten.length > 0) {
+      setPendingFlatten(flatten);
+      return;
+    }
+    void performSave();
+  }, [controller, performSave]);
 
   /** Reverts the last edit operation. */
   const handleUndo = useCallback(() => {
@@ -450,6 +477,17 @@ export function EditorView({
       </p>
       {message && <p className="page-status editor-page__message">{message}</p>}
       {loadError && <ErrorBanner onDismiss={() => setLoadError(null)}>{loadError}</ErrorBanner>}
+      {session?.reviewRequired && !pendingApprovalUrl && (
+        <p className="page-status editor-page__message">{m.editor.reviewModeBanner}</p>
+      )}
+      {pendingApprovalUrl && (
+        <p className="page-status editor-page__message">
+          {m.editor.submittedForApproval}{' '}
+          <a href={pendingApprovalUrl} target="_blank" rel="noreferrer">
+            {m.editor.viewPendingChange}
+          </a>
+        </p>
+      )}
       {publishNote && (
         <p className="page-status editor-page__message editor-page__publish-note">{publishNote}</p>
       )}
@@ -609,6 +647,26 @@ export function EditorView({
           {highlight && <p className="editor__preview-legend">{m.editor.previewLegend}</p>}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingFlatten !== null}
+        title={m.editor.confirmFlattenTitle}
+        message={
+          pendingFlatten !== null
+            ? fmt(m.editor.confirmFlattenMsg, {
+                count: String(pendingFlatten.length),
+                first: pendingFlatten[0]?.preview ?? '',
+              })
+            : ''
+        }
+        confirmLabel={m.common.save}
+        cancelLabel={m.common.cancel}
+        onConfirm={() => {
+          setPendingFlatten(null);
+          void performSave();
+        }}
+        onCancel={() => setPendingFlatten(null)}
+      />
     </section>
   );
 }

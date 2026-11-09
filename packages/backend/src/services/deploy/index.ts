@@ -17,6 +17,8 @@ export { PlatformError, PlatformRateLimitError };
 export { runWithConnection } from './refresh';
 export type { PlatformClients } from './refresh';
 export type { ConnectionRecord } from './connections';
+export { triggerProductionDeploy } from './publish';
+export type { ProductionDeployOutcome } from './publish';
 
 /** Fallback used when an error is not a recognized platform error. */
 export interface DeployErrorFallback {

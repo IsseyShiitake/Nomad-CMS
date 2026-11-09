@@ -113,6 +113,15 @@ export interface Messages {
     saveFailed: string;
     saveRateLimited: string;
     saveRejected: string;
+    placeholderImageBlocked: string;
+    placeholderTextBlocked: string;
+    containsFormatting: string;
+    markupWarning: string;
+    reviewModeBanner: string;
+    submittedForApproval: string;
+    viewPendingChange: string;
+    confirmFlattenTitle: string;
+    confirmFlattenMsg: string;
     elements: string;
     noElements: string;
     livePreview: string;
@@ -166,6 +175,22 @@ export interface Messages {
     colLanguage: string;
     colActions: string;
     languageAria: string;
+    colReview: string;
+    reviewHeading: string;
+    reviewIntro: string;
+    reviewEmpty: string;
+    reviewColChange: string;
+    reviewView: string;
+    reviewApprove: string;
+    reviewReject: string;
+    reviewOn: string;
+    reviewOff: string;
+    reviewToggleAria: string;
+    reviewApproveFailed: string;
+    reviewApprovePublishFailed: string;
+    reviewRejectFailed: string;
+    confirmRejectTitle: string;
+    confirmRejectMsg: string;
     statusActive: string;
     statusRevoked: string;
     resetPassword: string;
@@ -358,6 +383,20 @@ export const en: Messages = {
     saveFailed: 'Failed to save the page.',
     saveRateLimited: 'Too many requests — wait a moment and try again.',
     saveRejected: 'The server rejected the change. Check the content and try again.',
+    placeholderImageBlocked:
+      'A picture was added but never uploaded — open its row, choose Browse…, pick an image, then save again.',
+    placeholderTextBlocked:
+      'A heading or paragraph still contains its starter text ("New p") — edit or delete it, then save again.',
+    containsFormatting: 'Contains a link or formatting',
+    markupWarning:
+      'This block contains a link or formatting. Saving your edit replaces it with plain text.',
+    reviewModeBanner:
+      'Changes you save here are sent for review — they go live once the site owner approves them.',
+    submittedForApproval: 'Saved and sent for review.',
+    viewPendingChange: 'View the pending change',
+    confirmFlattenTitle: 'Save and remove formatting?',
+    confirmFlattenMsg:
+      'Your edit to {count} block(s) will remove their links or formatting (starting with “{first}”). Save anyway?',
     elements: 'Elements',
     noElements: 'No editable elements found.',
     livePreview: 'Live preview',
@@ -414,6 +453,25 @@ export const en: Messages = {
     colLanguage: 'Language',
     colActions: 'Actions',
     languageAria: 'Language for {label}',
+    colReview: 'Approval',
+    reviewHeading: 'Pending reviews',
+    reviewIntro:
+      'Changes saved by clients with approval required wait here. Approve to publish them, or reject to send them back.',
+    reviewEmpty: 'No changes waiting for review.',
+    reviewColChange: 'Change',
+    reviewView: 'View on GitHub',
+    reviewApprove: 'Approve & publish',
+    reviewReject: 'Reject',
+    reviewOn: 'Review on',
+    reviewOff: 'Direct save',
+    reviewToggleAria: 'Require approval for {label}',
+    reviewApproveFailed:
+      'The change conflicts with the current site content. Open it on GitHub to resolve, then merge.',
+    reviewApprovePublishFailed: 'Approved, but publishing to a hosting platform failed — use Publish on the pages list.',
+    reviewRejectFailed: 'Failed to reject the change. Please try again.',
+    confirmRejectTitle: 'Reject this change',
+    confirmRejectMsg:
+      'The client\u2019s pending change is closed and their next save starts fresh. This cannot be undone.',
     statusActive: 'Active',
     statusRevoked: 'Revoked',
     resetPassword: 'Reset password',
@@ -654,6 +712,20 @@ export const fr: Messages = {
     saveFailed: "Échec de l'enregistrement de la page.",
     saveRateLimited: 'Trop de requêtes — patientez un instant puis réessayez.',
     saveRejected: 'Le serveur a refusé la modification. Vérifiez le contenu puis réessayez.',
+    placeholderImageBlocked:
+      "Une image a été ajoutée mais jamais envoyée — ouvrez sa ligne, cliquez Parcourir…, choisissez une image, puis réenregistrez.",
+    placeholderTextBlocked:
+      'Un titre ou paragraphe contient encore son texte de départ (« New p ») — modifiez-le ou supprimez-le, puis réenregistrez.',
+    containsFormatting: 'Contient un lien ou de la mise en forme',
+    markupWarning:
+      'Ce bloc contient un lien ou de la mise en forme. Enregistrer votre modification le remplacera par du texte simple.',
+    reviewModeBanner:
+      'Vos modifications sont envoyées pour validation — elles seront publiées après approbation par le propriétaire du site.',
+    submittedForApproval: 'Enregistré et envoyé pour validation.',
+    viewPendingChange: 'Voir la modification en attente',
+    confirmFlattenTitle: 'Enregistrer et supprimer la mise en forme ?',
+    confirmFlattenMsg:
+      'Votre modification de {count} bloc(s) supprimera leurs liens ou mise en forme (à partir de « {first} »). Enregistrer quand même ?',
     elements: 'Éléments',
     noElements: 'Aucun élément éditable trouvé.',
     livePreview: 'Aperçu en direct',
@@ -710,6 +782,25 @@ export const fr: Messages = {
     colLanguage: 'Langue',
     colActions: 'Actions',
     languageAria: 'Langue pour {label}',
+    colReview: 'Validation',
+    reviewHeading: 'Modifications en attente',
+    reviewIntro:
+      'Les modifications des clients soumis à validation attendent ici. Approuvez pour les publier, ou rejetez-les.',
+    reviewEmpty: 'Aucune modification en attente.',
+    reviewColChange: 'Modification',
+    reviewView: 'Voir sur GitHub',
+    reviewApprove: 'Approuver & publier',
+    reviewReject: 'Rejeter',
+    reviewOn: 'Validation active',
+    reviewOff: 'Enregistrement direct',
+    reviewToggleAria: 'Exiger une validation pour {label}',
+    reviewApproveFailed:
+      'La modification est en conflit avec le contenu actuel du site. Ouvrez-la sur GitHub pour la résoudre, puis fusionnez.',
+    reviewApprovePublishFailed: 'Approuvé, mais la publication vers une plateforme a échoué — utilisez Publier dans la liste des pages.',
+    reviewRejectFailed: 'Échec du rejet de la modification. Veuillez réessayer.',
+    confirmRejectTitle: 'Rejeter cette modification',
+    confirmRejectMsg:
+      'La modification en attente du client est fermée et son prochain enregistrement repartira de zéro. Irréversible.',
     statusActive: 'Actif',
     statusRevoked: 'Révoqué',
     resetPassword: 'Réinitialiser le mot de passe',

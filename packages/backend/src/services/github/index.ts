@@ -18,7 +18,7 @@ import {
 } from './client';
 
 export { GitHubClient, MergeConflictError, RateLimitError, TreeTruncatedError, GitHubError, isValidOwnerRepo };
-export type { ReadFileResult } from './client';
+export type { ReadFileResult, GitHubPullRequest } from './client';
 
 /** Fallback used when an error is not a recognized GitHub error. */
 export interface ErrorFallback {

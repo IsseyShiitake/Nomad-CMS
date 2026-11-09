@@ -43,4 +43,14 @@ export interface SavePageResult {
 
   /** Human-readable error message, if the save failed. */
   error: string | null;
+
+  /**
+   * Review mode: true when the save landed on the client's review branch
+   * awaiting admin approval (merge of its pull request) instead of the
+   * production branch. Absent/false on direct saves.
+   */
+  pendingApproval?: boolean;
+
+  /** Review mode: the pull request URL where the admin approves the change. */
+  prUrl?: string | null;
 }

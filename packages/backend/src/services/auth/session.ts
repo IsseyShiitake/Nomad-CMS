@@ -58,6 +58,9 @@ export interface SessionRecord {
 
   /** Preferred UI language stored on the client access ('en' | 'fr'). */
   language?: 'en' | 'fr' | null;
+
+  /** Client access id this session belongs to (null/absent for admins). */
+  clientId?: string | null;
 }
 
 /** Generates a cryptographically random session token. */
@@ -96,8 +99,17 @@ export class SessionManager {
     repoLock: RepoRef,
     connectionOwner: string | null = null,
     language: 'en' | 'fr' | null = null,
+    clientId: string | null = null,
   ): Promise<string> {
-    return this.createSessionWithKind(githubToken, user, 'client', repoLock, connectionOwner, language);
+    return this.createSessionWithKind(
+      githubToken,
+      user,
+      'client',
+      repoLock,
+      connectionOwner,
+      language,
+      clientId,
+    );
   }
 
   /** Shared session creation for both kinds. */
@@ -108,6 +120,7 @@ export class SessionManager {
     repoLock: RepoRef | null,
     connectionOwner: string | null,
     language: 'en' | 'fr' | null,
+    clientId: string | null = null,
   ): Promise<string> {
     const token = generateToken();
     const record: SessionRecord = {
@@ -119,6 +132,7 @@ export class SessionManager {
       repoLock,
       connectionOwner,
       language,
+      clientId,
     };
 
     await this.kv.put(`${SESSION_PREFIX}${token}`, JSON.stringify(record), {
@@ -163,6 +177,7 @@ export class SessionManager {
         repoLock: parsed.repoLock,
         connectionOwner: parsed.connectionOwner,
         language: parsed.language,
+        clientId: parsed.clientId,
       };
       await this.kv.put(`${SESSION_PREFIX}${token}`, JSON.stringify(refreshed), {
         expirationTtl: SESSION_TTL_SECONDS,

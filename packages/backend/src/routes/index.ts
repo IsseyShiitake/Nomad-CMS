@@ -18,6 +18,7 @@ import { repositoryRoutes } from './repositories';
 import { previewRoutes } from './preview';
 import { clientsRoutes } from './clients';
 import { deployRoutes } from './deploy';
+import { reviewRoutes } from './review';
 
 export interface RouteContext {
   env: Env;
@@ -82,6 +83,9 @@ export async function handleApiRequest(
     return finalizeResponse(env, request, await clientsRoutes.handle(path.replace('/api/clients', ''), request, ctx));
   }
 
+  if (path.startsWith('/api/review')) {
+    return finalizeResponse(env, request, await reviewRoutes.handle(path.replace('/api/review', ''), request, ctx));
+  }
 
   if (path.startsWith('/api/deploy')) {
     return finalizeResponse(env, request, await deployRoutes.handle(path.replace('/api/deploy', ''), request, ctx));

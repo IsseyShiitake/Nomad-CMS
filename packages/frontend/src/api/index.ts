@@ -11,3 +11,4 @@ export * from './repositories';
 export * from './clients';
 export * from './images';
 export * from './deploy';
+export * from './review';

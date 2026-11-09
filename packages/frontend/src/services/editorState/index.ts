@@ -19,6 +19,7 @@ import type { ImageManager } from '@/services/images';
  * Backend error codes mapped to machine codes (describeSaveError
  * localizes them). Everything else surfaces the backend/parser message —
  * without this set, French users would see raw English API messages.
+ * The two placeholder_* codes are detected locally by the save guard.
  */
 const MAPPED_SAVE_CODES = new Set([
   'merge_conflict',
@@ -27,14 +28,18 @@ const MAPPED_SAVE_CODES = new Set([
   'invalid_content',
   'invalid_path',
   'repo_too_large',
+  'placeholder_image',
+  'placeholder_text',
 ]);
 
-import type {
-  EditOperation,
-  EditOutcome,
-  EditableDocument,
-  HtmlParser,
-  ScanMode,
+import {
+  PLACEHOLDER_SRC,
+  type EditOperation,
+  type EditOutcome,
+  type EditableDocument,
+  type EditableElement,
+  type HtmlParser,
+  type ScanMode,
 } from '@/services/htmlParser';
 
 /** The current state of the editor for a single page. */
@@ -53,6 +58,12 @@ export interface EditorState {
 
   /** The last save error, if any. */
   saveError: string | null;
+
+  /**
+   * Review mode: the pull-request URL of the pending change after a
+   * successful save awaiting approval (null on direct saves / after reload).
+   */
+  pendingApprovalUrl: string | null;
 
   /** Whether an undo step is available. */
   canUndo: boolean;
@@ -143,11 +154,19 @@ export class InMemoryEditorController implements EditorController {
   /** Document snapshots for undo, most recent last. */
   private readonly undoStack: EditableDocument[] = [];
 
+  /**
+   * Elements of the last loaded/saved document. The baseline for the
+   * flatten warning: a baseline element with inline markup whose current
+   * text differs will lose that markup when this edit is saved.
+   */
+  private baselineElements: EditableElement[] = [];
+
   pagePath = '';
   document: EditableDocument | null = null;
   isDirty = false;
   isSaving = false;
   saveError: string | null = null;
+  pendingApprovalUrl: string | null = null;
   canUndo = false;
 
   constructor(dependencies: EditorControllerDependencies) {
@@ -164,9 +183,11 @@ export class InMemoryEditorController implements EditorController {
 
     this.pagePath = page.path;
     this.document = document;
+    this.baselineElements = document.elements;
     this.fileSha = page.sha;
     this.isDirty = false;
     this.saveError = null;
+    this.pendingApprovalUrl = null;
     this.pendingImageUploads.clear();
     this.committedImagePaths.clear();
     this.undoStack.length = 0;
@@ -237,11 +258,67 @@ export class InMemoryEditorController implements EditorController {
     this.canUndo = this.undoStack.length > 0;
   }
 
+  /**
+   * Elements whose inline markup (links, emphasis) the current unsaved edits
+   * would flatten: baseline elements that contained markup and whose text
+   * has changed since. Each entry names the element and previews its text so
+   * the editor can ask for an explicit confirmation before saving.
+   */
+  flattenedMarkupEdits(): Array<{ tagName: string; preview: string }> {
+    if (!this.document) return [];
+    const out: Array<{ tagName: string; preview: string }> = [];
+    for (const base of this.baselineElements) {
+      if (!base.containsMarkup) continue;
+      const current = this.document.elements.find((element) => element.id === base.id);
+      if (current && current.textContent !== base.textContent) {
+        out.push({ tagName: base.tagName, preview: (base.textContent ?? '').slice(0, 60) });
+      }
+    }
+    return out;
+  }
+
   /** Registers a local file to be uploaded for an element on save. */
   registerImageUpload(elementId: string, file: File): void {
     this.pendingImageUploads.set(elementId, file);
     this.isDirty = true;
     this.saveError = null;
+  }
+
+  /**
+   * Saves the current document.
+   *
+   * Two-phase commit:
+   *   1. Upload any pending images, collecting elementId → new src.
+   *   2. Apply the new srcs to the document, serialize, and commit
+   *      the HTML with the message "CMS: Updated {path}".
+   *
+   * On success the file SHA is refreshed and pending uploads are
+   * cleared. On failure (upload or merge conflict) the error is
+   * surfaced and the document is left untouched so the user can
+   * retry.
+   */
+  /**
+   * Save blockers: inserted content still in its template state. A committed
+   * placeholder image is a guaranteed 404 on the live site; committed
+   * "New p" text is junk copy a visitor would see. Both must be resolved
+   * (image uploaded, text edited, or element deleted) before committing.
+   */
+  private findSaveBlocker(): string | null {
+    if (!this.document) return null;
+    for (const element of this.document.elements) {
+      if (
+        element.tagName === 'img' &&
+        element.src === PLACEHOLDER_SRC &&
+        !this.pendingImageUploads.has(element.id) &&
+        !this.committedImagePaths.has(element.id)
+      ) {
+        return 'placeholder_image';
+      }
+      if (element.textContent === `New ${element.tagName}`) {
+        return 'placeholder_text';
+      }
+    }
+    return null;
   }
 
   /**
@@ -264,6 +341,13 @@ export class InMemoryEditorController implements EditorController {
     if (this.isSaving) return;
     if (!this.document) {
       this.saveError = 'No page loaded.';
+      return;
+    }
+
+    // Template-state guard: never commit placeholder content.
+    const blocker = this.findSaveBlocker();
+    if (blocker) {
+      this.saveError = blocker;
       return;
     }
 
@@ -313,8 +397,10 @@ export class InMemoryEditorController implements EditorController {
       // Success — refresh state. The undo history is kept so the
       // user can continue undoing edits after a successful save.
       this.document = document;
+      this.baselineElements = document.elements;
       this.fileSha = result.sha;
       this.isDirty = false;
+      this.pendingApprovalUrl = result.pendingApproval ? (result.prUrl ?? null) : null;
       this.pendingImageUploads.clear();
       this.committedImagePaths.clear();
     } catch (error) {

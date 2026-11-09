@@ -33,9 +33,14 @@ import {
   sanitizeImageFileName,
 } from '@cms/shared';
 import { readSessionToken, json, jsonError, SECURITY_HEADERS } from '../core/http';
-import { SessionManager, resolveEncryptionKey } from '../services/auth';
+import { ClientStore, SessionManager, resolveEncryptionKey } from '../services/auth';
 import type { SessionRecord } from '../services/auth';
-import { GitHubClient, mapGitHubError, isValidOwnerRepo } from '../services/github';
+import {
+  GitHubClient,
+  GitHubError,
+  mapGitHubError,
+  isValidOwnerRepo,
+} from '../services/github';
 import type { ErrorFallback } from '../services/github';
 import { TreeTruncatedError } from '../services/github';
 import type { RouteContext } from './index';
@@ -62,7 +67,13 @@ function decodeSegment(segment: string): string {
 async function resolveSession(
   request: Request,
   ctx: RouteContext,
-): Promise<{ client: GitHubClient; kind: SessionKind; repoLock: RepoRef | null; login: string } | null> {
+): Promise<{
+  client: GitHubClient;
+  kind: SessionKind;
+  repoLock: RepoRef | null;
+  login: string;
+  clientId: string | null;
+} | null> {
   const token = readSessionToken(request);
   if (!token) return null;
   const sessions = new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env));
@@ -73,7 +84,114 @@ async function resolveSession(
     kind: session.kind ?? 'admin',
     repoLock: session.repoLock ?? null,
     login: session.user.login,
+    clientId: session.clientId ?? null,
   };
+}
+
+/** The per-client review branch used by approval mode. */
+function reviewBranchName(clientId: string): string {
+  return `cms/${clientId}`;
+}
+
+/**
+ * Loads the LIVE review-mode flag for a client session. The session's own
+ * snapshot is stale by design (the admin can toggle at any time); the save
+ * and read paths must route by what the record says now.
+ * Returns null for admin sessions, clients without a stored access, and
+ * accesses with review mode off.
+ */
+async function resolveReviewMode(
+  ctx: RouteContext,
+  clientId: string | null,
+  kind: SessionKind,
+): Promise<{ clientId: string; label: string } | null> {
+  if (kind !== 'client' || !clientId) return null;
+  const store = new ClientStore(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env));
+  const record = await store.get(clientId);
+  if (!record || !record.requireApproval || record.revoked) return null;
+  return { clientId: record.clientId, label: record.label };
+}
+
+/**
+ * Prepares the review branch for an approval-mode write. Returns the branch
+ * name and the already-open pull request (null when none), so the caller can
+ * hand it to ensureReviewPullRequest instead of re-fetching it.
+ *
+ * Lifecycle: when no pull request is open for the branch, the branch is
+ * deleted (when present) and re-created from the current default-branch HEAD —
+ * commits from a rejected (closed) or already-merged pull request never
+ * resurface in the next one, and routine staleness never accumulates.
+ */
+async function prepareReviewBranch(
+  client: GitHubClient,
+  owner: string,
+  repo: string,
+  clientId: string,
+): Promise<{ branch: string; openPr: Awaited<ReturnType<GitHubClient['findOpenPullRequest']>> }> {
+  const branch = reviewBranchName(clientId);
+  const openPr = await client.findOpenPullRequest(owner, repo, branch);
+  const head = await client.getBranchHead(owner, repo, branch);
+  if (!openPr && head) {
+    await client.deleteBranch(owner, repo, branch);
+  }
+  if (!openPr || !head) {
+    const sha = await client.getCommitSha(owner, repo, 'HEAD');
+    await client.createBranch(owner, repo, branch, sha);
+  }
+  return { branch, openPr };
+}
+
+/**
+ * Ensures exactly one open pull request exists for the review branch and
+ * returns its URL. A concurrent create (422) falls back to the existing PR.
+ * `known` short-circuits the lookup when the caller just fetched it.
+ */
+async function ensureReviewPullRequest(
+  client: GitHubClient,
+  owner: string,
+  repo: string,
+  clientId: string,
+  label: string,
+  known?: Awaited<ReturnType<GitHubClient['findOpenPullRequest']>>,
+): Promise<string> {
+  const branch = reviewBranchName(clientId);
+  const existing = known ?? (await client.findOpenPullRequest(owner, repo, branch));
+  if (existing) return existing.html_url;
+
+  const repository = await client.getRepository(owner, repo);
+  try {
+    const created = await client.createPullRequest(
+      owner,
+      repo,
+      branch,
+      repository.defaultBranch,
+      `CMS changes from ${label}`,
+      'Changes saved through the CMS by a client access with review mode on. Merge to publish.',
+    );
+    return created.html_url;
+  } catch (error) {
+    if (error instanceof GitHubError && error.status === 422) {
+      const raced = await client.findOpenPullRequest(owner, repo, branch);
+      if (raced) return raced.html_url;
+    }
+    throw error;
+  }
+}
+
+/**
+ * The ref an approval-mode client's READS should see: their review branch
+ * when it exists (so they see their own pending work), else null (default
+ * branch — the branch is created on their first save).
+ */
+async function reviewReadRef(
+  client: GitHubClient,
+  review: { clientId: string; label: string } | null,
+  owner: string,
+  repo: string,
+): Promise<string | null> {
+  if (!review) return null;
+  const branch = reviewBranchName(review.clientId);
+  return (await client.getBranchHead(owner, repo, branch)) ? branch : null;
 }
 
 /**
@@ -177,7 +295,7 @@ export const repositoryRoutes = {
     if (!resolved) {
       return jsonError('unauthorized', 'Not authenticated', 401);
     }
-    const { client, kind, repoLock, login } = resolved;
+    const { client, kind, repoLock, login, clientId } = resolved;
 
     // Maps a GitHub failure for THIS session's kind: when a client session's
     // backing GitHub token dies, the client keeps its own CMS login and gets
@@ -286,10 +404,15 @@ export const repositoryRoutes = {
         });
       }
       try {
+        // Approval-mode clients browse their review branch so pending work
+        // is visible to them; everyone else sees the default branch.
+        const review = await resolveReviewMode(ctx, clientId, kind);
+        const ref = await reviewReadRef(client, review, decodeSegment(owner), decodeSegment(repo));
         const files: RepositoryFile[] = await client.listContents(
           decodeSegment(owner),
           decodeSegment(repo),
           contentPath,
+          ref ?? undefined,
         );
         return json(files);
       } catch (error) {
@@ -330,7 +453,25 @@ export const repositoryRoutes = {
         });
       }
       try {
-        const bytes = await client.readRawFile(decodeSegment(owner), decodeSegment(repo), assetPath);
+        // Approval-mode clients preview assets from their review branch
+        // (newly uploaded images), falling back to the default branch.
+        const review = await resolveReviewMode(ctx, clientId, kind);
+        const ref = await reviewReadRef(client, review, decodeSegment(owner), decodeSegment(repo));
+        let bytes: Uint8Array;
+        try {
+          bytes = await client.readRawFile(
+            decodeSegment(owner),
+            decodeSegment(repo),
+            assetPath,
+            ref ?? undefined,
+          );
+        } catch (refError) {
+          if (ref && refError instanceof GitHubError && refError.status === 404) {
+            bytes = await client.readRawFile(decodeSegment(owner), decodeSegment(repo), assetPath);
+          } else {
+            throw refError;
+          }
+        }
         const extension = assetPath.split('.').pop()?.toLowerCase() ?? '';
         return new Response(bytes, {
           headers: {
@@ -367,7 +508,14 @@ export const repositoryRoutes = {
       try {
         // The fixed ref "HEAD" resolves to the repository's default branch,
         // so the tree can be listed without a prior metadata request.
-        const tree = await client.listTree(decodeSegment(owner), decodeSegment(repo), 'HEAD');
+        // Approval-mode clients see their review branch instead.
+        const review = await resolveReviewMode(ctx, clientId, kind);
+        const ref = await reviewReadRef(client, review, decodeSegment(owner), decodeSegment(repo));
+        const tree = await client.listTree(
+          decodeSegment(owner),
+          decodeSegment(repo),
+          ref ?? 'HEAD',
+        );
 
         // Filter the git tree for HTML files. The tree payload already
         // carries each blob's size and sha, so page summaries need no
@@ -419,11 +567,27 @@ export const repositoryRoutes = {
         });
       }
       try {
-        const file = await client.readFile(
-          decodeSegment(owner),
-          decodeSegment(repo),
-          safePath,
-        );
+        // Approval-mode clients read their pending version from the review
+        // branch; the sha it returns then guards their next save correctly.
+        // Pages that exist only on the production branch (added while a
+        // change is pending) fall back to it.
+        const review = await resolveReviewMode(ctx, clientId, kind);
+        const ref = await reviewReadRef(client, review, decodeSegment(owner), decodeSegment(repo));
+        let file: Awaited<ReturnType<GitHubClient['readFile']>>;
+        try {
+          file = await client.readFile(
+            decodeSegment(owner),
+            decodeSegment(repo),
+            safePath,
+            ref ?? undefined,
+          );
+        } catch (refError) {
+          if (ref && refError instanceof GitHubError && refError.status === 404) {
+            file = await client.readFile(decodeSegment(owner), decodeSegment(repo), safePath);
+          } else {
+            throw refError;
+          }
+        }
         const page: Page = {
           path: file.path,
           content: file.content,
@@ -501,6 +665,52 @@ export const repositoryRoutes = {
           status: 502,
         });
       }
+      // Review mode: the client's save lands on their review branch and a
+      // pull request — the production branch is untouched until the admin
+      // merges (POST /api/review/.../merge).
+      const review = await resolveReviewMode(ctx, clientId, kind);
+      if (review) {
+        try {
+          const { branch, openPr } = await prepareReviewBranch(
+            client,
+            decodeSegment(owner),
+            decodeSegment(repo),
+            review.clientId,
+          );
+          const result = await client.writeFile(
+            decodeSegment(owner),
+            decodeSegment(repo),
+            safePath,
+            content,
+            sha,
+            pageCommitMessage(safePath),
+            branch,
+          );
+          const prUrl = await ensureReviewPullRequest(
+            client,
+            decodeSegment(owner),
+            decodeSegment(repo),
+            review.clientId,
+            review.label,
+            openPr,
+          );
+          const payload: SavePageResult = {
+            success: true,
+            sha: result.sha,
+            error: null,
+            pendingApproval: true,
+            prUrl,
+          };
+          return json(payload);
+        } catch (error) {
+          return fail(error, {
+            code: 'github_error',
+            message: 'Failed to save the page for review',
+            status: 502,
+          });
+        }
+      }
+
       try {
         const result = await client.writeFile(
           decodeSegment(owner),
@@ -552,7 +762,14 @@ export const repositoryRoutes = {
       }
       try {
         // "HEAD" resolves to the default branch — no metadata request needed.
-        const tree = await client.listTree(decodeSegment(owner), decodeSegment(repo), 'HEAD');
+        // Approval-mode clients see their review branch (pending uploads).
+        const review = await resolveReviewMode(ctx, clientId, kind);
+        const ref = await reviewReadRef(client, review, decodeSegment(owner), decodeSegment(repo));
+        const tree = await client.listTree(
+          decodeSegment(owner),
+          decodeSegment(repo),
+          ref ?? 'HEAD',
+        );
 
         // Filter the git tree for common image file extensions. The tree
         // payload already includes each blob's real size and sha, so use
@@ -665,6 +882,62 @@ export const repositoryRoutes = {
           });
         }
 
+
+        // Review mode: the image lands on the client's review branch (part
+        // of the same pending change as their page edits) and the pull
+        // request is refreshed. The production branch stays untouched.
+        const review = await resolveReviewMode(ctx, clientId, kind);
+        if (review) {
+          try {
+            const { branch, openPr } = await prepareReviewBranch(
+              client,
+              decodeSegment(owner),
+              decodeSegment(repo),
+              review.clientId,
+            );
+            let existingSha: string | null = null;
+            try {
+              const tree = await client.listTree(
+                decodeSegment(owner),
+                decodeSegment(repo),
+                branch,
+              );
+              existingSha =
+                tree.find((item) => item.type === 'blob' && item.path === imagePath)?.sha ?? null;
+            } catch (error) {
+              if (error instanceof TreeTruncatedError) throw error;
+            }
+
+            const image = await client.uploadImage(
+              decodeSegment(owner),
+              decodeSegment(repo),
+              imagePath,
+              bytes,
+              mimeType,
+              imageCommitMessage(imagePath),
+              existingSha,
+              branch,
+            );
+            const prUrl = await ensureReviewPullRequest(
+              client,
+              decodeSegment(owner),
+              decodeSegment(repo),
+              review.clientId,
+              review.label,
+              openPr,
+            );
+            return json(
+              { success: true, image, error: null, pendingApproval: true, prUrl },
+              201,
+            );
+          } catch (error) {
+            return fail(error, {
+              code: 'github_error',
+              message: 'Failed to upload the image for review',
+              status: 502,
+            });
+          }
+        }
 
         // A re-upload with the same filename must REPLACE the blob: look up
         // the current sha from the default-branch tree so the contents PUT

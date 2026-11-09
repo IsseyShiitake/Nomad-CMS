@@ -74,6 +74,21 @@ Feature pages are lazy-loaded with `React.lazy` + `Suspense` so the initial bund
 
 The backend applies `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and a restrictive `Content-Security-Policy` to every API response. The frontend ships a CSP meta tag and a `_headers` file that Workers Static Assets serves with the assets (`_redirects` was deleted — the SPA fallback is native via `not_found_handling`).
 
+### 9. Review workflow on git branches (approval mode)
+
+A client access with review mode on saves to a `cms/<clientId>` branch and
+one open pull request to the production branch, instead of committing to the
+production branch directly. The production branch — the only thing deploys
+build from — never moves until the admin merges (approve) or the pull
+request is closed and the branch reset (reject). When no pull request is
+open, the next save re-anchors the branch from the production HEAD, so
+rejected or already-merged commits never resurface. Approving reuses the
+publish pipeline (`services/deploy/publish.ts`) so platform-connected sites
+deploy exactly as they do after an admin's direct save. The site's own CSS
+stays the design authority everywhere: inserted elements adopt the classes
+and image sizing of their same-tag siblings rather than receiving CMS
+styles.
+
 ## Frontend module responsibilities
 
 | Module | Responsibility |

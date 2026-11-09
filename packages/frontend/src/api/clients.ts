@@ -48,6 +48,21 @@ export async function updateClientLanguage(clientId: string, language: 'en' | 'f
   });
 }
 
+/**
+ * Toggles review mode for a client access. With review mode on, the client's
+ * saves land on a review branch + pull request and wait for the admin's
+ * approval instead of committing to the production branch.
+ */
+export async function setClientApproval(
+  clientId: string,
+  requireApproval: boolean,
+): Promise<ClientAccess> {
+  return apiRequest<ClientAccess>(`/api/clients/${encodeURIComponent(clientId)}/approval`, {
+    method: 'POST',
+    body: JSON.stringify({ requireApproval }),
+  });
+}
+
 /** Permanently deletes a client access. */
 export async function deleteClient(clientId: string): Promise<void> {
   await apiRequest<{ success: boolean }>(`/api/clients/${encodeURIComponent(clientId)}`, {

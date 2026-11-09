@@ -12,5 +12,6 @@ export * from './auth';
 export * from './client';
 export * from './image';
 export * from './deploy';
+export * from './review';
 export * from './api';
 export * from './path';

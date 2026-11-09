@@ -84,6 +84,7 @@ export function ClientPagesPage() {
             repo={lockedRepo}
             size="tile"
             className="client-pages__hero-tile"
+            showVisibility={false}
             onSelect={() => setPagesOpen(true)}
           />
           {error && <ErrorBanner onDismiss={() => setError(null)}>{error}</ErrorBanner>}

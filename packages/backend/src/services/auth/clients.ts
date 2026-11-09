@@ -33,6 +33,8 @@ export interface ClientRecord {
   revoked: boolean;
   /** Preferred UI language for this client ('en' | 'fr'); optional, absent on legacy records. */
   language?: 'en' | 'fr';
+  /** Review mode (saves to a review branch + pull request); absent = direct saves. */
+  requireApproval?: boolean;
   /** Failed sign-in attempts since the last success / lock reset. */
   failedAttempts: number;
   /** ISO timestamp until which sign-in is blocked, or null. */
@@ -126,6 +128,7 @@ export class ClientStore {
       lastUsedAt: record.lastUsedAt,
       revoked: record.revoked,
       language: record.language,
+      requireApproval: record.requireApproval,
     };
   }
 }

@@ -26,20 +26,20 @@ import type {
   DeployLink,
   DeployPlatform,
   DeployProject,
-  PublishResult,
   RepoRef,
   SessionKind,
 } from '@cms/shared';
 import { json, jsonError, readSessionToken } from '../core/http';
 import { SessionManager, resolveEncryptionKey } from '../services/auth';
 import type { SessionRecord } from '../services/auth';
-import { GitHubClient, mapGitHubError, isValidOwnerRepo } from '../services/github';
+import { isValidOwnerRepo } from '../services/github';
 import {
   CloudflarePagesClient,
   ConnectionStore,
   VercelClient,
   mapDeployError,
   runWithConnection,
+  triggerProductionDeploy,
 } from '../services/deploy';
 import type { DeployErrorFallback } from '../services/deploy';
 import { PlatformError } from '../services/deploy';
@@ -320,80 +320,40 @@ export const deployRoutes = {
       if (!isAdmin) {
         return jsonError('admin_only', 'Only administrators can publish', 403);
       }
-      const { links, errors } = await resolveLinks();
-      if (links.length === 0) {
-        if (errors.length > 0) return mapDeployError(errors[0], DEPLOY_FALLBACK);
+
+      // The shared production-deploy service (also used after an approved
+      // review merge) resolves linked projects and the Vercel default branch,
+      // then triggers every linked project; partial failures are reported
+      // per platform.
+      let outcome;
+      try {
+        outcome = await triggerProductionDeploy({
+          env: ctx.env,
+          githubToken: session.githubToken,
+          connectionOwner,
+          owner,
+          repo,
+          message: `CMS: publish ${owner}/${repo}`,
+        });
+      } catch (error) {
+        return mapDeployError(error, DEPLOY_FALLBACK);
+      }
+
+      if (!outcome.linked) {
         return jsonError(
           'no_linked_project',
           'No hosting platform project is connected to this repository',
           404,
         );
       }
-
-      // Vercel deploys from a Git ref: use the repository's real default
-      // branch (Cloudflare derives it from the project itself, no ref
-      // needed). The GitHub token in the session provides the branch.
-      let defaultBranch: string | null = null;
-      try {
-        const github = new GitHubClient(session.githubToken);
-        const repository = await github.getRepository(owner, repo);
-        defaultBranch = repository.defaultBranch;
-      } catch (error) {
-        return mapGitHubError(error, {
-          code: 'github_error',
-          message: 'Failed to look up the repository branch for publishing',
-          status: 502,
-        });
-      }
-
-      const results: PublishResult[] = [];
-      const failures: Array<{ platform: DeployPlatform; error: string }> = [];
-      for (const link of links) {
-        const record = await store.get(connectionOwner, link.platform);
-        if (!record) continue;
-        const message = `CMS: publish ${owner}/${repo}`;
-        try {
-          const deployment = await runWithConnection(
-            ctx.env,
-            store,
-            record,
-            ({ cloudflare, vercel }) =>
-              cloudflare
-                ? cloudflare.deploy(link.projectName, message)
-                : vercel!.deployGit(link.projectName, owner, repo, defaultBranch!, message),
-          );
-          results.push({
-            platform: link.platform,
-            projectName: link.projectName,
-            deploymentId: deployment.id,
-            state: deployment.state,
-          });
-          await store.touch(connectionOwner, link.platform, {
-            lastUsedAt: new Date().toISOString(),
-            tokenInvalid: false,
-          });
-        } catch (error) {
-          if (
-            error instanceof PlatformError &&
-            (error.status === 401 || error.status === 403)
-          ) {
-            await store.touch(connectionOwner, link.platform, { tokenInvalid: true }).catch(() => {});
-          }
-          failures.push({
-            platform: link.platform,
-            error: error instanceof Error ? error.message : 'publish failed',
-          });
-        }
-      }
-
-      if (results.length === 0 && failures.length > 0) {
+      if (outcome.deployments.length === 0 && outcome.failures.length > 0) {
         return jsonError(
           'publish_failed',
-          `Publishing failed on ${failures[0]!.platform}: ${failures[0]!.error}`,
+          `Publishing failed on ${outcome.failures[0]!.platform}: ${outcome.failures[0]!.error}`,
           502,
         );
       }
-      return json({ deployments: results, failures });
+      return json({ deployments: outcome.deployments, failures: outcome.failures });
     }
 
     // GET /links/:owner/:repo/status — per-platform latest deployment state.

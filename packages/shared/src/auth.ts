@@ -59,4 +59,15 @@ export interface SessionInfo {
    * accesses without a stored preference.
    */
   language?: 'en' | 'fr' | null;
+  /**
+   * Client access id this session belongs to (null for admins). The save
+   * path reads the live access record to decide review-mode routing.
+   */
+  clientId?: string | null;
+  /**
+   * Snapshot of the access's review mode at sign-in (true = this client's
+   * saves wait for admin approval). The authoritative check happens per save;
+   * this powers the editor's informational banner.
+   */
+  reviewRequired?: boolean | null;
 }
