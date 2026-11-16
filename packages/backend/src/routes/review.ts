@@ -56,11 +56,16 @@ export const reviewRoutes = {
         }
       });
 
-    // GET / — every open cms/* pull request across approval-mode accesses.
+    // GET / — every open cms/* pull request across client accesses.
+    //
+    // ALL accesses are enumerated, not only approval-mode ones (audit
+    // 2026-11-15): toggling approval off (or revoking) must not hide an open
+    // pull request — it stays open on GitHub and the admin still needs to
+    // approve or reject it. Deleted accesses are the one gap: their record
+    // (and with it their repository) is gone from KV, so an orphaned cms/*
+    // PR only surfaces if another access shares that repository.
     if (segments.length === 0 && request.method === 'GET') {
-      const records = (await store.list()).filter(
-        (record) => record.requireApproval && !record.revoked,
-      );
+      const records = await store.list();
       // One listing per distinct repository, not per access.
       const repos = new Map<string, string>();
       for (const record of records) {
@@ -116,10 +121,11 @@ export const reviewRoutes = {
         await client.updatePullRequestBranch(owner, repo, number).catch(() => {});
         await client.mergePullRequest(owner, repo, number);
       } catch (error) {
-        if (error instanceof GitHubError && error.status === 409) {
-          // Already merged (double-click on the approve button): the outcome
-          // the admin wanted is in place — fall through to publishing.
-        } else if (error instanceof GitHubError && (error.status === 405 || error.status === 422)) {
+        // Note: an upstream 409 is shaped as MergeConflictError (not a
+        // GitHubError) by the client and therefore lands in mapGitHubError
+        // below — the branch is about 405/422 "not mergeable / conflict"
+        // verdicts only. (The audit's dead 409 branch was removed.)
+        if (error instanceof GitHubError && (error.status === 405 || error.status === 422)) {
           return jsonError(
             'review_conflict',
             'This change conflicts with the current site content. Resolve it on GitHub, then merge.',

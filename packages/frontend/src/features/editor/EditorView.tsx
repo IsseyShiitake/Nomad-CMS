@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useBlocker } from 'react-router';
 import type { Messages } from '@/i18n';
+import type { ImageAsset } from '@cms/shared';
 import { encodePath } from '@cms/shared';
 import type { EditOperation, EditableElement, InsertableTag, ScanMode } from '@/services/htmlParser';
 import { DomHtmlParser } from '@/services/htmlParser';
@@ -44,8 +45,9 @@ const ZOOM_STEP = 0.25;
 
 /**
  * Maps a save-error code from the controller to a localized message.
- * Parser-invariant messages (e.g. "Element not found.") pass through
- * verbatim — they are developer-facing contract strings, not UX copy.
+ * Parser-invariant messages used to pass through verbatim as developer
+ * contract strings; since the 2026-11-15 audit they are mapped to codes by
+ * the controller and localized here, so French users never see raw English.
  */
 export function describeSaveError(code: string | null, m: Messages): string | null {
   if (code == null) return null;
@@ -53,9 +55,17 @@ export function describeSaveError(code: string | null, m: Messages): string | nu
   if (code === 'rate_limited') return m.editor.saveRateLimited;
   if (code === 'placeholder_image') return m.editor.placeholderImageBlocked;
   if (code === 'placeholder_text') return m.editor.placeholderTextBlocked;
+  if (code === 'image_src_missing') return m.editor.imageSrcMissing;
   if (code === 'file_too_large' || code === 'invalid_content' || code === 'invalid_path' || code === 'repo_too_large') {
     return m.editor.saveRejected;
   }
+  if (code === 'element_not_found') return m.editor.elementNotFound;
+  if (code === 'text_value_required') return m.editor.textValueRequired;
+  if (code === 'image_src_required') return m.editor.imageSrcRequired;
+  if (code === 'text_edit_not_for_images') return m.editor.textEditNotForImages;
+  if (code === 'replace_image_only_images') return m.editor.replaceImageOnlyImages;
+  if (code === 'insert_tag_required') return m.editor.insertTagRequired;
+  if (code === 'no_page_loaded') return m.editor.noPageLoaded;
   if (code === 'save_failed') return m.editor.saveFailed;
   return code;
 }
@@ -135,6 +145,8 @@ export function EditorView({
   const [elements, setElements] = useState<EditableElement[]>([]);
   const [sourceHtml, setSourceHtml] = useState('');
   const [previewHtml, setPreviewHtml] = useState('');
+  // Existing repository images, for the rows' reuse picker.
+  const [images, setImages] = useState<ImageAsset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -300,6 +312,11 @@ export function EditorView({
         setIsDirty(controller.isDirty);
         setActiveElementId(null);
         setPreviewScrollId(null);
+        // Refresh the reuse picker (additive — a listing failure just
+        // empties it; the load itself already succeeded).
+        void controller.loadImages().then(() => {
+          if (!cancelled) setImages(controller.images);
+        });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -348,7 +365,8 @@ export function EditorView({
     (operation: EditOperation) => {
       const outcome = controller?.applyEdit(operation);
       if (outcome?.error) {
-        setMessage(outcome.error);
+        // Localized: parser errors arrive as machine codes now.
+        setMessage(describeSaveError(outcome.error, messagesRef.current));
         return;
       }
       setMessage(null);
@@ -528,6 +546,7 @@ export function EditorView({
                   key={element.id}
                   element={element}
                   callbacks={callbacks}
+                  images={images}
                   isActive={element.id === activeElementId}
                   onActivate={(id) => activateElement(id, true)}
                 />

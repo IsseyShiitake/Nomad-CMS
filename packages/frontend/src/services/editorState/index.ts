@@ -13,13 +13,16 @@
 
 import { getPage, savePage } from '@/api';
 import { ApiClientError } from '@/api/client';
+import type { ImageAsset } from '@cms/shared';
 import type { ImageManager } from '@/services/images';
 
 /**
  * Backend error codes mapped to machine codes (describeSaveError
  * localizes them). Everything else surfaces the backend/parser message —
  * without this set, French users would see raw English API messages.
- * The two placeholder_* codes are detected locally by the save guard.
+ * The two placeholder_* codes are detected locally by the save guard AND
+ * enforced server-side by the save route (same codes, same localized copy);
+ * image_src_missing is detected locally only.
  */
 const MAPPED_SAVE_CODES = new Set([
   'merge_conflict',
@@ -30,14 +33,37 @@ const MAPPED_SAVE_CODES = new Set([
   'repo_too_large',
   'placeholder_image',
   'placeholder_text',
+  'image_src_missing',
 ]);
+
+/**
+ * Parser-invariant messages mapped to machine codes so the UI localizes
+ * them (audit 2026-11-15 papercut: they used to pass through as raw
+ * English to French users). Unknown messages still pass through verbatim.
+ */
+const PARSER_ERROR_CODES: Record<string, string> = {
+  'Element not found.': 'element_not_found',
+  'Text value is required.': 'text_value_required',
+  'Image src is required.': 'image_src_required',
+  'Text editing is not available for images.': 'text_edit_not_for_images',
+  'Image replacement is only available for images.': 'replace_image_only_images',
+  'An element type is required for insertion.': 'insert_tag_required',
+  'No page loaded.': 'no_page_loaded',
+};
+
+/** One flatten-risk record: an element whose edit will replace markup or
+ * structure with plain text when saved. tagName + the pre-edit text preview
+ * feed the save-time confirmation dialog. */
+interface FlattenRisk {
+  tagName: string;
+  preview: string;
+}
 
 import {
   PLACEHOLDER_SRC,
   type EditOperation,
   type EditOutcome,
   type EditableDocument,
-  type EditableElement,
   type HtmlParser,
   type ScanMode,
 } from '@/services/htmlParser';
@@ -58,6 +84,9 @@ export interface EditorState {
 
   /** The last save error, if any. */
   saveError: string | null;
+
+  /** The repository's existing image assets, for the editor's picker. */
+  images: ImageAsset[];
 
   /**
    * Review mode: the pull-request URL of the pending change after a
@@ -94,6 +123,9 @@ export interface EditorActions {
    * upload succeeds during save.
    */
   registerImageUpload: (elementId: string, file: File) => void;
+
+  /** Refreshes the repository's image listing for the editor's picker. */
+  loadImages: () => Promise<void>;
 
   /** Saves the current document: uploads images, then commits HTML. */
   save: () => Promise<void>;
@@ -151,15 +183,24 @@ export class InMemoryEditorController implements EditorController {
    */
   private readonly committedImagePaths = new Map<string, string>();
 
-  /** Document snapshots for undo, most recent last. */
-  private readonly undoStack: EditableDocument[] = [];
+  /**
+   * Flatten risks recorded at EDIT time: an element whose pre-edit state had
+   * flattenable children (inline markup or structural content) and whose
+   * text was changed. Keyed by the id AT EDIT TIME and carrying its own
+   * tagName/preview, the record survives the id shifts that later
+   * insert/delete operations cause — the old save-time id matching missed
+   * exactly those elements (audit 2026-11-15).
+   */
+  private flattenRisks = new Map<string, FlattenRisk>();
+
+  /** The repository's existing image assets, for the editor's picker. */
+  images: ImageAsset[] = [];
 
   /**
-   * Elements of the last loaded/saved document. The baseline for the
-   * flatten warning: a baseline element with inline markup whose current
-   * text differs will lose that markup when this edit is saved.
+   * Undo snapshots. Each carries the risk-map era alongside the document so
+   * undoing an edit also un-records the flatten risk that edit introduced.
    */
-  private baselineElements: EditableElement[] = [];
+  private readonly undoStack: Array<{ document: EditableDocument; risks: Map<string, FlattenRisk> }> = [];
 
   pagePath = '';
   document: EditableDocument | null = null;
@@ -183,17 +224,28 @@ export class InMemoryEditorController implements EditorController {
 
     this.pagePath = page.path;
     this.document = document;
-    this.baselineElements = document.elements;
     this.fileSha = page.sha;
     this.isDirty = false;
     this.saveError = null;
     this.pendingApprovalUrl = null;
     this.pendingImageUploads.clear();
     this.committedImagePaths.clear();
+    this.flattenRisks.clear();
     this.undoStack.length = 0;
     this.canUndo = false;
 
     return document;
+  }
+
+  /** Refreshes the repository's image listing for the editor's picker.
+   * Failures leave the previous listing (or empty) — the picker is
+   * additive and must not break the editor. */
+  async loadImages(): Promise<void> {
+    try {
+      this.images = await this.imageManager.listImages(this.owner, this.repo);
+    } catch {
+      this.images = [];
+    }
   }
 
   /** Re-parses the current clean document with a different element mode. */
@@ -220,21 +272,38 @@ export class InMemoryEditorController implements EditorController {
     }
 
     const previous = this.document;
+    // The pre-edit target: its containsMarkup state decides whether this
+    // edit records a flatten risk (edit-text only).
+    const target = previous.elements.find((element) => element.id === operation.elementId);
     const outcome = this.parser.apply(this.document, operation);
-    this.document = outcome.document;
-    this.saveError = outcome.error;
 
-    // Successful edits mark the document dirty and push an undo snapshot.
-    // Failed operations leave the document untouched — and must NOT clear an
-    // existing dirty flag, or a failed edit would lock the Save button while
-    // unsaved changes remain.
-    if (outcome.error == null) {
-      this.isDirty = true;
-      this.undoStack.push(previous);
-      this.canUndo = true;
+    if (outcome.error != null) {
+      const code = PARSER_ERROR_CODES[outcome.error] ?? outcome.error;
+      this.document = outcome.document;
+      this.saveError = code;
+      return { document: outcome.document, error: code };
     }
 
-    return outcome;
+    // Successful edits mark the document dirty, push an undo snapshot (with
+    // the risk map as it was BEFORE the edit) and — for text edits to
+    // elements that carried flattenable children — record the flatten risk.
+    this.document = outcome.document;
+    this.isDirty = true;
+    const risksBefore = new Map(this.flattenRisks);
+    if (operation.type === 'delete') {
+      // A deleted element's flatten risk must not keep firing the save
+      // confirmation for content that no longer exists (N4, false positive).
+      this.flattenRisks.delete(operation.elementId);
+    } else if (operation.type === 'edit-text' && target?.containsMarkup) {
+      this.flattenRisks.set(operation.elementId, {
+        tagName: target.tagName,
+        preview: (target.textContent ?? '').slice(0, 60),
+      });
+    }
+    this.undoStack.push({ document: previous, risks: risksBefore });
+    this.canUndo = true;
+    this.saveError = null;
+    return { document: outcome.document, error: null };
   }
 
   /** Reverts the last edit operation, if any. Blocked while a save is in
@@ -248,7 +317,8 @@ export class InMemoryEditorController implements EditorController {
       return;
     }
 
-    this.document = previous;
+    this.document = previous.document;
+    this.flattenRisks = previous.risks;
     this.isDirty = true;
     this.saveError = null;
 
@@ -259,22 +329,15 @@ export class InMemoryEditorController implements EditorController {
   }
 
   /**
-   * Elements whose inline markup (links, emphasis) the current unsaved edits
-   * would flatten: baseline elements that contained markup and whose text
-   * has changed since. Each entry names the element and previews its text so
-   * the editor can ask for an explicit confirmation before saving.
+   * Elements whose inline markup or structure the current unsaved edits
+   * would flatten: recorded at EDIT time for every text edit whose target
+   * carried flattenable children. Each entry names the element and previews
+   * its pre-edit text so the editor can ask for an explicit confirmation
+   * before saving. Edit-time recording survives the id shifts that later
+   * insert/delete operations cause.
    */
   flattenedMarkupEdits(): Array<{ tagName: string; preview: string }> {
-    if (!this.document) return [];
-    const out: Array<{ tagName: string; preview: string }> = [];
-    for (const base of this.baselineElements) {
-      if (!base.containsMarkup) continue;
-      const current = this.document.elements.find((element) => element.id === base.id);
-      if (current && current.textContent !== base.textContent) {
-        out.push({ tagName: base.tagName, preview: (base.textContent ?? '').slice(0, 60) });
-      }
-    }
-    return out;
+    return Array.from(this.flattenRisks.values());
   }
 
   /** Registers a local file to be uploaded for an element on save. */
@@ -300,8 +363,10 @@ export class InMemoryEditorController implements EditorController {
   /**
    * Save blockers: inserted content still in its template state. A committed
    * placeholder image is a guaranteed 404 on the live site; committed
-   * "New p" text is junk copy a visitor would see. Both must be resolved
-   * (image uploaded, text edited, or element deleted) before committing.
+   * "New p" text is junk copy a visitor would see; a source-less image (the
+   * src field can now be cleared) resolves to the page URL. All must be
+   * resolved (image uploaded/picked, text edited, or element deleted) before
+   * committing.
    */
   private findSaveBlocker(): string | null {
     if (!this.document) return null;
@@ -314,6 +379,9 @@ export class InMemoryEditorController implements EditorController {
       ) {
         return 'placeholder_image';
       }
+      if (element.tagName === 'img' && element.src === '') {
+        return 'image_src_missing';
+      }
       if (element.textContent === `New ${element.tagName}`) {
         return 'placeholder_text';
       }
@@ -321,19 +389,6 @@ export class InMemoryEditorController implements EditorController {
     return null;
   }
 
-  /**
-   * Saves the current document.
-   *
-   * Two-phase commit:
-   *   1. Upload any pending images, collecting elementId → new src.
-   *   2. Apply the new srcs to the document, serialize, and commit
-   *      the HTML with the message "CMS: Updated {path}".
-   *
-   * On success the file SHA is refreshed and pending uploads are
-   * cleared. On failure (upload or merge conflict) the error is
-   * surfaced and the document is left untouched so the user can
-   * retry.
-   */
   async save(): Promise<void> {
     // Re-entrancy guard: a second save while one is in flight would race
     // the same base sha into GitHub (a false merge conflict for the user
@@ -397,12 +452,16 @@ export class InMemoryEditorController implements EditorController {
       // Success — refresh state. The undo history is kept so the
       // user can continue undoing edits after a successful save.
       this.document = document;
-      this.baselineElements = document.elements;
       this.fileSha = result.sha;
       this.isDirty = false;
       this.pendingApprovalUrl = result.pendingApproval ? (result.prUrl ?? null) : null;
       this.pendingImageUploads.clear();
       this.committedImagePaths.clear();
+      // The flattening edits are now committed; the re-parsed elements no
+      // longer carry the markup, so the risks are realized and cleared.
+      this.flattenRisks.clear();
+      // Refresh the picker listing (the save may have uploaded new images).
+      void this.loadImages();
     } catch (error) {
       // Machine codes, not copy: the UI maps codes to localized strings
       // (describeSaveError). Non-API errors (parser invariants, network

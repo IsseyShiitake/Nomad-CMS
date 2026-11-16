@@ -16,7 +16,10 @@ import type {
 
 /** Lists images in a repository. */
 export async function listImages(owner: string, repo: string): Promise<ImageAsset[]> {
-  return apiRequest<ListImagesResponse>(`/api/repositories/${owner}/${repo}/images`, {});
+  return apiRequest<ListImagesResponse>(
+    `/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/images`,
+    {},
+  );
 }
 
 /** Uploads an image to a repository. */
@@ -29,7 +32,7 @@ export async function uploadImage(
   formData.append('file', file);
 
   return apiRequest<UploadImageResponse>(
-    `/api/repositories/${owner}/${repo}/images`,
+    `/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/images`,
     {
       method: 'POST',
       body: formData,

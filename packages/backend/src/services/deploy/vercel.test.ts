@@ -256,6 +256,20 @@ describe('VercelClient', () => {
     await expect(client.listProjects()).rejects.toBeInstanceOf(PlatformError);
   });
 
+  it('maps malformed JSON with a JSON content-type to a PlatformError 502 (audit 2026-11-15)', async () => {
+    // A SyntaxError escaping readDeploymentFile would surface as an unmapped
+    // raw 500 instead of a clean platform failure.
+    fetchSpy.mockResolvedValue(
+      new Response('<html>not json</html>', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const promise = client.readDeploymentFile('dpl_1', 'file_1');
+    await expect(promise).rejects.toMatchObject({ status: 502 });
+  });
+
   it('extracts the error message from a Vercel error body', async () => {
     fetchSpy.mockResolvedValue(
       json({ error: { code: 'forbidden', message: 'token lacks scope' }, status: 403 }, 403),

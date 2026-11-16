@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { MAX_IMAGE_BYTES, sanitizeImageFileName } from '@cms/shared';
+import type { ImageAsset } from '@cms/shared';
 import type { EditableElement, InsertableTag } from '@/services/htmlParser';
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog';
 import { fmt, useI18n } from '@/i18n';
@@ -43,11 +44,14 @@ export interface ElementEditorCallbacks {
 export function ElementEditor({
   element,
   callbacks,
+  images,
   isActive,
   onActivate,
 }: {
   element: EditableElement;
   callbacks: ElementEditorCallbacks;
+  /** Existing repository images, for the reuse picker (empty hides it). */
+  images: ImageAsset[];
   /** True when this row matches the element last clicked (preview or panel). */
   isActive: boolean;
   /** Marks this row active (preview scrolls to the matching area). */
@@ -55,7 +59,7 @@ export function ElementEditor({
 }) {
   const { m } = useI18n();
   const isImage = element.tagName === 'img';
-  const [insertTag, setInsertTag] = useState<InsertableTag>('h1');
+  const [insertTag, setInsertTag] = useState<InsertableTag>('p');
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -164,6 +168,24 @@ export function ElementEditor({
                 {m.editor.browseFile}
               </button>
             </div>
+            {images.length > 0 && (
+              <select
+                className="editor-element__tag"
+                value=""
+                aria-label={m.editor.pickExistingAria}
+                onChange={(event) => {
+                  const path = event.target.value;
+                  if (path) callbacks.onReplaceImage(element.id, path);
+                }}
+              >
+                <option value="">{m.editor.pickExisting}</option>
+                {images.map((image) => (
+                  <option key={image.path} value={image.path}>
+                    {image.path}
+                  </option>
+                ))}
+              </select>
+            )}
             <span className="editor-element__filename">
               {fileName ?? m.editor.noFileSelected}
             </span>

@@ -47,6 +47,10 @@ export function SettingsPage() {
   const [repositories, setRepositories] = useState<Repository[]>([]);
   // Open review pull requests (client changes awaiting approval).
   const [reviews, setReviews] = useState<ReviewPullRequest[]>([]);
+  // True when the review queue itself failed to load — pending changes may
+  // be hidden, so this must NOT read as the "nothing to approve" empty
+  // state (audit 2026-11-15).
+  const [reviewsFailed, setReviewsFailed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,14 +74,16 @@ export function SettingsPage() {
     }
     setError(null);
     try {
+      // A queue failure is NOT the empty state: null sentinel → retry note.
       const [clients, repos, pulls] = await Promise.all([
         listClients(),
         listRepositories(),
-        listReviewPullRequests().catch(() => [] as ReviewPullRequest[]),
+        listReviewPullRequests().catch(() => null),
       ]);
       setAccesses(clients);
       setRepositories(repos);
-      setReviews(pulls);
+      setReviews(pulls ?? []);
+      setReviewsFailed(pulls === null);
       setRepoValue((current) => current || (repos.length > 0 ? `${repos[0]!.owner}/${repos[0]!.name}` : current));
     } catch {
       setError(m.settings.loadFailed);
@@ -261,7 +267,15 @@ export function SettingsPage() {
       <h3>{m.settings.reviewHeading}</h3>
       <p className="page-status">{m.settings.reviewIntro}</p>
 
-      {!isLoading && reviews.length > 0 && (
+      {!isLoading && reviewsFailed && (
+        <Card className="settings-card">
+          <p className="page-status">{m.settings.reviewLoadFailed}</p>
+          <button type="button" className="btn" onClick={() => void load()}>
+            {m.settings.reviewRetry}
+          </button>
+        </Card>
+      )}
+      {!isLoading && !reviewsFailed && reviews.length > 0 && (
         <Card className="settings-card">
           <div className="settings-table-wrap">
             <table className="settings-table">
@@ -308,7 +322,9 @@ export function SettingsPage() {
           </div>
         </Card>
       )}
-      {!isLoading && reviews.length === 0 && <p className="page-status">{m.settings.reviewEmpty}</p>}
+      {!isLoading && !reviewsFailed && reviews.length === 0 && (
+        <p className="page-status">{m.settings.reviewEmpty}</p>
+      )}
 
       <h3>{m.settings.clientsHeading}</h3>
       <p className="page-status">{m.settings.clientsIntro}</p>

@@ -423,6 +423,76 @@ describe('review workflow', () => {
     expect(pulls[0]!.label).toBe('ACME Corp');
   });
 
+  it('still lists an open PR after approval mode is toggled OFF (audit 2026-11-15)', async () => {
+    // The PR stays open on GitHub and must stay actionable in the queue —
+    // hiding it stranded the change until the next save overwrote it.
+    await store.update('acme-corp', { requireApproval: false });
+    github.openPulls.set('cms/acme-corp', pr(7, 'cms/acme-corp'));
+
+    const response = await reviewRoutes.handle(
+      '/',
+      new Request('http://localhost/api/review', {
+        headers: { Cookie: `__Host-cms_session=${adminSession}` },
+      }),
+      ctx,
+    );
+    expect(response.status).toBe(200);
+    const pulls = await data<Array<{ number: number; clientId: string | null }>>(response);
+    expect(pulls).toHaveLength(1);
+    expect(pulls[0]!.number).toBe(7);
+    expect(pulls[0]!.clientId).toBe('acme-corp');
+  });
+
+  it('still lists an open PR after the access is revoked (audit 2026-11-15)', async () => {
+    await store.update('acme-corp', { revoked: true, requireApproval: false });
+    github.openPulls.set('cms/acme-corp', pr(7, 'cms/acme-corp'));
+
+    const response = await reviewRoutes.handle(
+      '/',
+      new Request('http://localhost/api/review', {
+        headers: { Cookie: `__Host-cms_session=${adminSession}` },
+      }),
+      ctx,
+    );
+    expect(response.status).toBe(200);
+    const pulls = await data<Array<{ number: number; clientId: string | null }>>(response);
+    expect(pulls).toHaveLength(1);
+    expect(pulls[0]!.number).toBe(7);
+  });
+
+  it('maps an upstream 409 merge answer to merge_conflict (no dead success branch)', async () => {
+    // The old code treated GitHubError 409 as "already merged, fall through
+    // to publishing" — but a 409 never arrives as a GitHubError (the client
+    // shapes it as MergeConflictError), so the branch was unreachable.
+    github.openPulls.set('cms/acme-corp', pr(7, 'cms/acme-corp'));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (url.endsWith('/pulls/7/update-branch')) {
+          return new Response(JSON.stringify({ message: 'No-op' }), { status: 202 });
+        }
+        if (url.endsWith('/pulls/7/merge')) {
+          return new Response('{"message":"conflict"}', { status: 409 });
+        }
+        return new Response(null, { status: 404 });
+      }),
+    );
+    const response = await reviewRoutes.handle(
+      '/octocat/site/7/merge',
+      new Request('http://localhost/api/review/octocat/site/7/merge', {
+        method: 'POST',
+        headers: { Cookie: `__Host-cms_session=${adminSession}`, 'X-CSRF-Token': 'test' },
+      }),
+      ctx,
+    );
+    // A real 409 surfaces as merge_conflict — never as a successful publish.
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('merge_conflict');
+    expect(github.mergedPulls).not.toContain(7);
+  });
+
   it('approves: merges the pull request (production untouched by the client)', async () => {
     github.openPulls.set('cms/acme-corp', pr(7, 'cms/acme-corp'));
     const response = await reviewRoutes.handle(

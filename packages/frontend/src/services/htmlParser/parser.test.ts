@@ -519,4 +519,309 @@ describe('DomHtmlParser inline-markup flag', () => {
     // After the flattening edit the markup is gone, so the re-parse reports false.
     expect(outcome.document?.elements.find((e) => e.id === linked.id)?.containsMarkup).toBe(false);
   });
+
+  it('flags the inline tags the old fixed selector missed (audit 2026-11-15)', () => {
+    const source = `<body><p>Year <abbr title="circa">c.</abbr> 1900 <time>12:00</time> <mark>hi</mark> H<sub>2</sub>O <q>quote</q> <cite>X</cite></p></body>`;
+    const doc = parser.parse(source, 'generic');
+    expect(doc.elements[0]!.containsMarkup).toBe(true);
+  });
+
+  it('flags a data-editable-block container with structural children (audit 2026-11-15)', () => {
+    // One textarea edit used to silently replace the block's h1/p/img with
+    // plain text, with no badge and no confirm — containsMarkup reported
+    // false because it only looked for inline tags.
+    const source = `<body><section data-editable-block><h1>Title</h1><p>Copy</p><img src="a.png"></section></body>`;
+    const doc = parser.parse(source, 'editable');
+    const block = doc.elements.find((e) => e.tagName === 'section')!;
+    expect(block.containsMarkup).toBe(true);
+    expect(block.textContent).toContain('Title');
+  });
+
+  it('does not flag br-only children (line breaks survive text edits)', () => {
+    const source = `<body><p>Alpha<br>Beta</p></body>`;
+    const doc = parser.parse(source, 'generic');
+    expect(doc.elements[0]!.containsMarkup).toBe(false);
+  });
+});
+
+describe('DomHtmlParser occurrence disambiguation (audit 2026-11-15)', () => {
+  const DUPLICATES = `<body>\n  <p>Same</p>\n  <p>Same</p>\n  <p>Same</p>\n  <p>Keep me</p>\n</body>`;
+
+  it('edits the TARGET duplicate surgically instead of re-serializing the file', () => {
+    const doc = parser.parse(DUPLICATES, 'generic');
+    const second = doc.elements[1]!;
+
+    const outcome = parser.apply(doc, {
+      elementId: second.id,
+      type: 'edit-text',
+      value: 'Changed',
+    });
+    expect(outcome.error).toBeNull();
+    // Only the second occurrence changed — the other duplicates and the
+    // author's formatting are untouched (no whole-file re-serialization).
+    expect(outcome.document?.sourceHtml).toBe(
+      `<body>\n  <p>Same</p>\n  <p>Changed</p>\n  <p>Same</p>\n  <p>Keep me</p>\n</body>`,
+    );
+  });
+
+  it('deletes the TARGET duplicate, not the first occurrence', () => {
+    const doc = parser.parse(DUPLICATES, 'generic');
+    const third = doc.elements[2]!;
+
+    const outcome = parser.apply(doc, { elementId: third.id, type: 'delete', value: null });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml).toBe(
+      `<body>\n  <p>Same</p>\n  <p>Same</p>\n  <p>Keep me</p>\n</body>`,
+    );
+  });
+
+  it('falls back to re-serialization only when identical elements are formatted differently', () => {
+    // Two identical-in-DOM paragraphs, one written bare in the source — the
+    // occurrence map is unsound, so the fallback must kick in.
+    const mixed = `<body><p data-editable>Same</p><p data-editable="">Same</p></body>\n`;
+    const doc = parser.parse(mixed, 'editable');
+    const first = doc.elements[0]!;
+
+    const outcome = parser.apply(doc, {
+      elementId: first.id,
+      type: 'edit-text',
+      value: 'Changed',
+    });
+    expect(outcome.error).toBeNull();
+    // No assertion on the exact form: the fallback's output is DOM-normalized.
+    expect(outcome.document?.sourceHtml).toContain('Changed');
+  });
+});
+
+describe('DomHtmlParser line-ending hygiene (audit 2026-11-15)', () => {
+  it('a CRLF delete swallows the whole line instead of leaving an empty one', () => {
+    const source = `<body>\r\n  <p>Keep</p>\r\n  <p>Drop me</p>\r\n  <p>Also keep</p>\r\n</body>`;
+    const doc = parser.parse(source, 'generic');
+    const drop = doc.elements.find((e) => e.textContent === 'Drop me')!;
+
+    const outcome = parser.apply(doc, { elementId: drop.id, type: 'delete', value: null });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml).toBe(
+      `<body>\r\n  <p>Keep</p>\r\n  <p>Also keep</p>\r\n</body>`,
+    );
+  });
+
+  it('an insert gets its own line with the anchor indentation (LF files)', () => {
+    const source = `<body>\n  <h1>Head</h1>\n  <p>Tail</p>\n</body>`;
+    const doc = parser.parse(source, 'generic');
+    const h1 = doc.elements.find((e) => e.tagName === 'h1')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: h1.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'p',
+    });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml).toBe(
+      `<body>\n  <h1>Head</h1>\n  <p data-editable="">New p</p>\n  <p>Tail</p>\n</body>`
+        .replace(' data-editable=""', ''),
+    );
+  });
+
+  it('an insert in a CRLF file uses CRLF endings and the anchor indentation', () => {
+    const source = `<body>\r\n  <h1>Head</h1>\r\n</body>`;
+    const doc = parser.parse(source, 'generic');
+    const h1 = doc.elements.find((e) => e.tagName === 'h1')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: h1.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'p',
+    });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml).toBe(
+      `<body>\r\n  <h1>Head</h1>\r\n  <p>New p</p>\r\n</body>`,
+    );
+  });
+});
+
+describe('DomHtmlParser wrapper-based grid inserts (audit 2026-11-15)', () => {
+  const FIGURE_GRID = `<!doctype html>
+<html><body>
+  <div class="grid">
+    <figure class="card"><img src="images/a.png" class="thumb" width="400" height="300" loading="lazy"></figure>
+    <figure class="card"><img src="images/b.png" class="thumb" width="400" height="300" loading="lazy"></figure>
+  </div>
+</body></html>`;
+
+  it('clones the figure cell instead of landing inside the existing one', () => {
+    const doc = parser.parse(FIGURE_GRID, 'generic');
+    const firstImg = doc.elements.find((e) => e.tagName === 'img')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: firstImg.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'img',
+    });
+    expect(outcome.error).toBeNull();
+    const html = outcome.document!.sourceHtml;
+
+    // Three figure cells now, each with exactly one image; the new image is
+    // a placeholder inside its own cloned figure, carrying the adopted attrs.
+    const figures = html.match(/<figure class="card">/g) ?? [];
+    expect(figures).toHaveLength(3);
+    expect(html.match(/<img src="images\/a\.png"/g)).toHaveLength(1);
+    expect(html).toContain(
+      '<img src="/images/placeholder.png" alt="" class="thumb" width="400" height="300" loading="lazy">',
+    );
+    // The clone follows the anchor cell.
+    const anchorEnd = html.indexOf('images/a.png');
+    const cloneIndex = html.indexOf('/images/placeholder.png');
+    expect(cloneIndex).toBeGreaterThan(anchorEnd);
+  });
+
+  it('clones an li cell in list-based grids', () => {
+    const source = `<!doctype html>
+<html><body>
+  <ul class="tiles">
+    <li><img src="images/one.png"></li>
+    <li><img src="images/two.png"></li>
+  </ul>
+</body></html>`;
+    const doc = parser.parse(source, 'generic');
+    const firstImg = doc.elements.find((e) => e.tagName === 'img')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: firstImg.id,
+      type: 'insert-above',
+      value: null,
+      insertTag: 'img',
+    });
+    expect(outcome.error).toBeNull();
+    const html = outcome.document!.sourceHtml;
+    expect((html.match(/<li>/g) ?? []).length).toBe(3);
+    // The clone precedes the anchor cell (insert-above).
+    expect(html.indexOf('/images/placeholder.png')).toBeLessThan(html.indexOf('images/one.png'));
+  });
+
+  it('keeps direct-sibling image rows growing as siblings (no wrapper)', () => {
+    // A container holding SEVERAL images is a row, not a unit: adding one
+    // more image must stay a sibling insert.
+    const source = `<!doctype html>
+<html><body>
+  <div class="row">
+    <img src="images/a.png" class="tile">
+    <img src="images/b.png" class="tile">
+  </div>
+</body></html>`;
+    const doc = parser.parse(source, 'generic');
+    const firstImg = doc.elements.find((e) => e.tagName === 'img')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: firstImg.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'img',
+    });
+    expect(outcome.error).toBeNull();
+    const html = outcome.document!.sourceHtml;
+    // Still one .row div; three sibling images inside it.
+    expect((html.match(/<div class="row">/g) ?? []).length).toBe(1);
+    expect(html).toContain('images/a.png');
+    expect(html.indexOf('/images/placeholder.png')).toBeGreaterThan(html.indexOf('images/a.png'));
+    expect(html.indexOf('/images/placeholder.png')).toBeLessThan(html.indexOf('images/b.png'));
+  });
+
+  it('leaves a single (non-repeating) figure alone — the old in-cell insert', () => {
+    const source = `<!doctype html>
+<html><body>
+  <figure class="spotlight"><img src="images/one.png" class="big"></figure>
+</body></html>`;
+    const doc = parser.parse(source, 'generic');
+    const img = doc.elements.find((e) => e.tagName === 'img')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: img.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'img',
+    });
+    expect(outcome.error).toBeNull();
+    // No same-tag siblings → no unit → the image joins inside the figure.
+    expect((outcome.document!.sourceHtml.match(/<figure class="spotlight">/g) ?? []).length).toBe(1);
+    expect(outcome.document!.sourceHtml).toContain(
+      '<img src="/images/placeholder.png" alt="" class="big">',
+    );
+  });
+
+  it('removes CMS-marked captions from the cloned cell (no duplicated copy)', () => {
+    const source = `<!doctype html>
+<html><body>
+  <ul class="tiles">
+    <li><img src="images/one.png"><p data-editable>Caption one</p></li>
+    <li><img src="images/two.png"><p data-editable>Caption two</p></li>
+  </ul>
+</body></html>`;
+    // Beacons mode lists the images (the captions are not the target here).
+    const doc = parser.parse(source, 'generic');
+    const firstImg = doc.elements.find((e) => e.tagName === 'img')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: firstImg.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'img',
+    });
+    expect(outcome.error).toBeNull();
+    const html = outcome.document!.sourceHtml;
+    expect(html).not.toContain('Caption one</p>\n'); // not duplicated verbatim…
+    expect(html).toContain('Caption two'); // …while the anchor cell keeps its copy
+    expect((html.match(/<li>/g) ?? []).length).toBe(3);
+  });
+
+  it('keeps the fresh image when the anchor cell is CMS-marked (N1 regression)', () => {
+    // N1: stripping [data-editable] from the clone BEFORE replacing the
+    // cloned image deleted the clone's only image — an empty cell got
+    // committed. The strip must run after the replacement and never touch
+    // the fresh image (which carries data-editable in editable mode).
+    const source = `<!doctype html>
+<html><body>
+  <ul class="tiles">
+    <li data-editable-block><img data-editable src="images/one.png"></li>
+    <li data-editable-block><img data-editable src="images/two.png"></li>
+  </ul>
+</body></html>`;
+    const doc = parser.parse(source, 'editable');
+    const firstImg = doc.elements.find((e) => e.tagName === 'img')!;
+
+    const outcome = parser.apply(doc, {
+      elementId: firstImg.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'img',
+    });
+    expect(outcome.error).toBeNull();
+    const html = outcome.document!.sourceHtml;
+
+    // Three marked cells (anchor keeps the bare source form, the clone
+    // serializes data-editable-block=""), three images (two originals +
+    // the placeholder)…
+    expect((html.match(/<li data-editable-block/g) ?? []).length).toBe(3);
+    expect((html.match(/<img /g) ?? []).length).toBe(3);
+    // …no empty cell was committed…
+    expect(html.match(/<li[^>]*><\/li>/g)).toBeNull();
+    // …and the placeholder sits inside its own cloned cell, CMS-marked.
+    expect(html).toContain('<img src="/images/placeholder.png"');
+    const placeholderIdx = html.indexOf('/images/placeholder.png');
+    expect(html.slice(0, placeholderIdx).lastIndexOf('<li')).toBeGreaterThan(-1);
+  });
+});
+
+describe('DomHtmlParser image src clearing (audit 2026-11-15 papercut)', () => {
+  it('accepts an empty src (the field can be cleared; the save guard blocks committing it)', () => {
+    const doc = parser.parse(FIXTURE, 'generic');
+    const id = findFirstId(doc, 'img');
+
+    const outcome = parser.apply(doc, { elementId: id, type: 'replace-image', value: '' });
+    expect(outcome.error).toBeNull();
+    expect(outcome.document?.sourceHtml).toContain('src=""');
+  });
 });

@@ -112,7 +112,6 @@ export function isCredentialedCorsEnabled(env: Env): boolean {
 /** Builds a Set-Cookie value for the session token (HttpOnly). */
 export function sessionCookie(
   httpsDeployment: boolean,
-  _request: Request,
   token: string,
   maxAge: number,
   allowCrossOrigin: boolean,
@@ -123,7 +122,6 @@ export function sessionCookie(
 /** Builds a Set-Cookie value that clears the session cookie. */
 export function clearSessionCookie(
   httpsDeployment: boolean,
-  _request: Request,
   allowCrossOrigin: boolean,
 ): string {
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; ${cookieAttributes(httpsDeployment, allowCrossOrigin)}; Max-Age=0`;

@@ -115,8 +115,18 @@ export interface Messages {
     saveRejected: string;
     placeholderImageBlocked: string;
     placeholderTextBlocked: string;
+    imageSrcMissing: string;
     containsFormatting: string;
     markupWarning: string;
+    elementNotFound: string;
+    textValueRequired: string;
+    imageSrcRequired: string;
+    textEditNotForImages: string;
+    replaceImageOnlyImages: string;
+    insertTagRequired: string;
+    noPageLoaded: string;
+    pickExisting: string;
+    pickExistingAria: string;
     reviewModeBanner: string;
     submittedForApproval: string;
     viewPendingChange: string;
@@ -179,6 +189,8 @@ export interface Messages {
     reviewHeading: string;
     reviewIntro: string;
     reviewEmpty: string;
+    reviewLoadFailed: string;
+    reviewRetry: string;
     reviewColChange: string;
     reviewView: string;
     reviewApprove: string;
@@ -387,9 +399,20 @@ export const en: Messages = {
       'A picture was added but never uploaded — open its row, choose Browse…, pick an image, then save again.',
     placeholderTextBlocked:
       'A heading or paragraph still contains its starter text ("New p") — edit or delete it, then save again.',
+    imageSrcMissing:
+      'An image has no source — upload a file or pick an existing image, or delete the image, then save again.',
     containsFormatting: 'Contains a link or formatting',
     markupWarning:
       'This block contains a link or formatting. Saving your edit replaces it with plain text.',
+    elementNotFound: 'That element no longer exists — reload the page to continue.',
+    textValueRequired: 'A text value is required.',
+    imageSrcRequired: 'An image source is required.',
+    textEditNotForImages: 'Text editing is not available for images.',
+    replaceImageOnlyImages: 'Image replacement is only available for images.',
+    insertTagRequired: 'Choose an element type to insert.',
+    noPageLoaded: 'No page is loaded.',
+    pickExisting: 'Reuse an existing image…',
+    pickExistingAria: 'Pick an existing image from the repository',
     reviewModeBanner:
       'Changes you save here are sent for review — they go live once the site owner approves them.',
     submittedForApproval: 'Saved and sent for review.',
@@ -458,6 +481,9 @@ export const en: Messages = {
     reviewIntro:
       'Changes saved by clients with approval required wait here. Approve to publish them, or reject to send them back.',
     reviewEmpty: 'No changes waiting for review.',
+    reviewLoadFailed:
+      'Could not load the review queue — pending changes may exist but are not shown. Please retry.',
+    reviewRetry: 'Retry',
     reviewColChange: 'Change',
     reviewView: 'View on GitHub',
     reviewApprove: 'Approve & publish',
@@ -716,9 +742,20 @@ export const fr: Messages = {
       "Une image a été ajoutée mais jamais envoyée — ouvrez sa ligne, cliquez Parcourir…, choisissez une image, puis réenregistrez.",
     placeholderTextBlocked:
       'Un titre ou paragraphe contient encore son texte de départ (« New p ») — modifiez-le ou supprimez-le, puis réenregistrez.',
+    imageSrcMissing:
+      "Une image n'a pas de source — téléversez un fichier ou choisissez une image existante, ou supprimez l'image, puis réenregistrez.",
     containsFormatting: 'Contient un lien ou de la mise en forme',
     markupWarning:
       'Ce bloc contient un lien ou de la mise en forme. Enregistrer votre modification le remplacera par du texte simple.',
+    elementNotFound: "Cet élément n'existe plus — rechargez la page pour continuer.",
+    textValueRequired: 'Une valeur textuelle est requise.',
+    imageSrcRequired: "La source de l'image est requise.",
+    textEditNotForImages: "La modification de texte n'est pas disponible pour les images.",
+    replaceImageOnlyImages: "Le remplacement d'image n'est disponible que pour les images.",
+    insertTagRequired: "Choisissez un type d'élément à insérer.",
+    noPageLoaded: 'Aucune page chargée.',
+    pickExisting: 'Réutiliser une image existante…',
+    pickExistingAria: "Choisir une image existante du dépôt",
     reviewModeBanner:
       'Vos modifications sont envoyées pour validation — elles seront publiées après approbation par le propriétaire du site.',
     submittedForApproval: 'Enregistré et envoyé pour validation.',
@@ -787,6 +824,9 @@ export const fr: Messages = {
     reviewIntro:
       'Les modifications des clients soumis à validation attendent ici. Approuvez pour les publier, ou rejetez-les.',
     reviewEmpty: 'Aucune modification en attente.',
+    reviewLoadFailed:
+      'Impossible de charger la file de validation — des modifications en attente peuvent exister sans être affichées. Veuillez réessayer.',
+    reviewRetry: 'Réessayer',
     reviewColChange: 'Modification',
     reviewView: 'Voir sur GitHub',
     reviewApprove: 'Approuver & publier',

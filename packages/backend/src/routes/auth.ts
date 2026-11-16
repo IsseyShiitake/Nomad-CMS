@@ -45,6 +45,8 @@ import {
 import {
   AUTHORIZE_RATE_LIMIT,
   AUTHORIZE_RATE_WINDOW_SECONDS,
+  CLIENT_LOGIN_RATE_LIMIT,
+  CLIENT_LOGIN_RATE_WINDOW_SECONDS,
   checkRateLimit,
   clientIp,
 } from '../core/rateLimit';
@@ -76,6 +78,17 @@ const MAX_FAILED_ATTEMPTS = 5;
 
 /** Lock duration after too many failed attempts (15 minutes). */
 const LOCK_DURATION_MS = 15 * 60 * 1000;
+
+/**
+ * Per-account lockout honesty note (audit 2026-11-15): the failed-attempts
+ * counter is a KV read-modify-write, so PARALLEL wrong-password attempts can
+ * all read the same count and none of them lands the lock — and Cloudflare
+ * KV has no atomic increment to close that race. The per-IP client-login
+ * rate limit below is the real enforcement: it caps every source IP's
+ * attempts (sequential or parallel, one account or many) regardless of
+ * counter state. The lockout remains useful against a patient single-IP
+ * script and as the per-account signal.
+ */
 
 /**
  * Dummy salt for the anti-enumeration hash burn on unknown client IDs
@@ -375,7 +388,7 @@ export const authRoutes = {
           headers: {
             'Content-Type': 'application/json',
             'Cache-Control': 'no-store',
-            'Set-Cookie': sessionCookie(httpsDeployment, request, token, SESSION_TTL_SECONDS, allowCrossOrigin),
+            'Set-Cookie': sessionCookie(httpsDeployment, token, SESSION_TTL_SECONDS, allowCrossOrigin),
           },
         });
       } catch (error) {
@@ -389,6 +402,27 @@ export const authRoutes = {
 
     // POST /client-login — sign in a client with access ID + password.
     if (path === '/client-login' && request.method === 'POST') {
+      // Per-IP rate limit BEFORE any KV read or PBKDF2 burn: every attempt
+      // here is unauthenticated and costs a 100k-iteration PBKDF2 verify,
+      // and the per-account lockout cannot enforce a ceiling against
+      // parallel attempts or one-try-per-account spraying (see the honesty
+      // note above MAX_FAILED_ATTEMPTS).
+      const verdict = await checkRateLimit(
+        ctx.env,
+        'client-login',
+        clientIp(request),
+        CLIENT_LOGIN_RATE_LIMIT,
+        CLIENT_LOGIN_RATE_WINDOW_SECONDS,
+      );
+      if (!verdict.allowed) {
+        return jsonError(
+          'rate_limited',
+          'Too many sign-in attempts from this address — try again shortly',
+          429,
+          { 'Retry-After': String(verdict.retryAfterSeconds) },
+        );
+      }
+
       const body = (await request.json().catch(() => null)) as {
         clientId?: unknown;
         password?: unknown;
@@ -478,7 +512,7 @@ export const authRoutes = {
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-store',
-          'Set-Cookie': sessionCookie(httpsDeployment, request, token, SESSION_TTL_SECONDS, allowCrossOrigin),
+          'Set-Cookie': sessionCookie(httpsDeployment, token, SESSION_TTL_SECONDS, allowCrossOrigin),
         },
       });
     }
@@ -503,7 +537,14 @@ export const authRoutes = {
       if ((session.kind ?? 'admin') === 'client' && session.clientId) {
         const store = new ClientStore(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env));
         const record = await store.get(session.clientId);
-        reviewRequired = record?.requireApproval === true;
+        // Trust-boundary re-check, same as the repositories/deploy routes
+        // (audit 2026-11-15 follow-up): a revoked or deleted access must not
+        // keep presenting a live session — answer as signed out so the
+        // frontend shows the sign-in screen instead of a working client UI.
+        if (!record || record.revoked) {
+          return json(null);
+        }
+        reviewRequired = record.requireApproval === true;
       }
       const info: SessionInfo = {
         user: session.user,
@@ -518,7 +559,7 @@ export const authRoutes = {
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-store',
-          'Set-Cookie': sessionCookie(httpsDeployment, request, token, SESSION_TTL_SECONDS, allowCrossOrigin),
+          'Set-Cookie': sessionCookie(httpsDeployment, token, SESSION_TTL_SECONDS, allowCrossOrigin),
         },
       });
     }
@@ -534,7 +575,7 @@ export const authRoutes = {
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-store',
-          'Set-Cookie': clearSessionCookie(httpsDeployment, request, allowCrossOrigin),
+          'Set-Cookie': clearSessionCookie(httpsDeployment, allowCrossOrigin),
         },
       });
     }

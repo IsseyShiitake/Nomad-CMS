@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../env';
-import { SessionManager } from '../services/auth';
+import { ClientStore, SessionManager } from '../services/auth';
 import { repositoryRoutes } from './repositories';
 import { handleApiRequest } from './index';
 import type { RouteContext } from './index';
@@ -565,5 +565,298 @@ describe('repository listing hasHtml annotation', () => {
       ['octocat/broken', null],
     ]);
     expect(fetchSpy).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('revoked and deleted client sessions (audit 2026-11-15 must-fix)', () => {
+  let kv: KVNamespace;
+  let ctx: RouteContext;
+  let clientSession: string;
+
+  beforeEach(async () => {
+    ({ kv } = mockKv());
+    ctx = { env: makeEnv(kv) };
+    const sessions = new SessionManager(kv, KEY);
+    const store = new ClientStore(kv, KEY);
+    await store.create({
+      clientId: 'acme-corp',
+      label: 'ACME Corp',
+      repo: { owner: 'octocat', repo: 'site' },
+      createdBy: 'octocat',
+      passwordHash: 'hash',
+      salt: 'salt',
+      githubToken: await store.encryptGitHubToken(ADMIN_TOKEN),
+      createdAt: '2026-11-15T00:00:00Z',
+      lastUsedAt: null,
+      revoked: false,
+      failedAttempts: 0,
+      lockedUntil: null,
+    });
+    clientSession = await sessions.createClientSession(
+      ADMIN_TOKEN,
+      { id: 0, login: 'acme', name: 'acme', avatarUrl: null },
+      { owner: 'octocat', repo: 'site' },
+      'octocat',
+      null,
+      'acme-corp',
+    );
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function pageRequest(): Request {
+    return new Request('http://localhost/api/repositories/octocat/site/pages/index.html', {
+      headers: { Cookie: `__Host-cms_session=${clientSession}` },
+    });
+  }
+
+  it('rejects a revoked client access with 401 while the session cookie is still live', async () => {
+    const before = await repositoryRoutes.handle('/octocat/site/pages/index.html', pageRequest(), ctx);
+    expect(before.status).not.toBe(401); // the live access works
+
+    const store = new ClientStore(kv, KEY);
+    await store.update('acme-corp', { revoked: true });
+    vi.mocked(fetch).mockClear();
+
+    // Same untouched cookie, now revoked: 401 on every repository route.
+    const after = await repositoryRoutes.handle('/octocat/site/pages/index.html', pageRequest(), ctx);
+    expect(after.status).toBe(401);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it('rejects a deleted client access with 401 while the session cookie is still live', async () => {
+    const store = new ClientStore(kv, KEY);
+    await store.delete('acme-corp');
+
+    const response = await repositoryRoutes.handle('/octocat/site/pages/index.html', pageRequest(), ctx);
+    expect(response.status).toBe(401);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it('a revoked approval-mode access can no longer save (no direct-to-main fallback)', async () => {
+    const store = new ClientStore(kv, KEY);
+    await store.update('acme-corp', { revoked: true, requireApproval: true });
+
+    const response = await repositoryRoutes.handle(
+      '/octocat/site/pages/index.html',
+      new Request('http://localhost/api/repositories/octocat/site/pages/index.html', {
+        method: 'PUT',
+        headers: {
+          Cookie: `__Host-cms_session=${clientSession}`,
+          'X-CSRF-Token': 'test',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content: '<h1>Edited</h1>', sha: 'file-sha' }),
+      }),
+      ctx,
+    );
+    // 401 beats everything: the revoked session never reaches a write path.
+    expect(response.status).toBe(401);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+});
+
+describe('server-side placeholder guard (audit 2026-11-15)', () => {
+  let ctx: RouteContext;
+  let adminSession: string;
+
+  beforeEach(async () => {
+    const { kv } = mockKv();
+    ctx = { env: makeEnv(kv) };
+    const sessions = new SessionManager(kv, KEY);
+    adminSession = await sessions.createSession(ADMIN_TOKEN, {
+      id: 1,
+      login: 'octocat',
+      name: 'Octocat',
+      avatarUrl: null,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ content: { path: 'index.html', sha: 'new-sha', size: 10, name: 'index.html' } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function putContent(content: string): Promise<Response> {
+    return repositoryRoutes.handle(
+      '/octocat/site/pages/index.html',
+      new Request('http://localhost/api/repositories/octocat/site/pages/index.html', {
+        method: 'PUT',
+        headers: {
+          Cookie: `__Host-cms_session=${adminSession}`,
+          'X-CSRF-Token': 'x',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content, sha: 'file-sha' }),
+      }),
+      ctx,
+    );
+  }
+
+  it('rejects a save still carrying the placeholder image src (double-quoted)', async () => {
+    const response = await putContent('<p>Hi</p><img src="/images/placeholder.png" alt="">');
+    expect(response.status).toBe(422);
+    expect((await errorBody(response)).error?.code).toBe('placeholder_image');
+  });
+
+  it('rejects the single-quoted attribute form too', async () => {
+    const response = await putContent("<img src='/images/placeholder.png' alt=''>");
+    expect(response.status).toBe(422);
+    expect((await errorBody(response)).error?.code).toBe('placeholder_image');
+  });
+
+  it('rejects a save still carrying untouched insert text', async () => {
+    const response = await putContent('<h1>Hi</h1><p>New p</p>');
+    expect(response.status).toBe(422);
+    expect((await errorBody(response)).error?.code).toBe('placeholder_text');
+  });
+
+  it('allows normal content through to the commit', async () => {
+    const response = await putContent('<h1>Hi</h1><p>Mentions New p in prose? No — plain copy.</p>');
+    // prose mentions are fine: only the exact serialized form is rejected.
+    expect(response.status).toBe(200);
+  });
+});
+
+describe('image upload tree lookup error narrowing (audit 2026-11-15)', () => {
+  it('surfaces a GitHub 5xx from the existingSha tree lookup instead of degrading to a create-PUT', async () => {
+    const { kv } = mockKv();
+    const ctx: RouteContext = { env: makeEnv(kv) };
+    const sessions = new SessionManager(kv, KEY);
+    const adminSession = await sessions.createSession(ADMIN_TOKEN, {
+      id: 1,
+      login: 'octocat',
+      name: 'Octocat',
+      avatarUrl: null,
+    });
+
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input instanceof Request ? input.url : input);
+        const method = (init?.method ?? 'GET').toUpperCase();
+        calls.push(`${method} ${url}`);
+        if (url.includes('/git/trees/')) {
+          return new Response('{"message":"boom"}', { status: 500 });
+        }
+        return new Response('{"message":"unmocked"}', { status: 500 });
+      }),
+    );
+
+    const bytes = new Uint8Array([137, 80, 78, 71]); // PNG-ish bytes
+    const response = await repositoryRoutes.handle(
+      '/octocat/site/images',
+      new Request('http://localhost/api/repositories/octocat/site/images', {
+        method: 'POST',
+        headers: {
+          Cookie: `__Host-cms_session=${adminSession}`,
+          'X-CSRF-Token': 'x',
+          'Content-Type': 'multipart/form-data; boundary=x',
+        },
+        body: formDataWithPng(bytes),
+      }),
+      ctx,
+    );
+
+    // The tree failure surfaced as 502 and NO contents-PUT was attempted.
+    expect(response.status).toBe(502);
+    expect(calls.some((call) => call.startsWith('PUT '))).toBe(false);
+    vi.unstubAllGlobals();
+  });
+});
+
+/** Builds a minimal multipart body carrying one PNG file field. */
+function formDataWithPng(bytes: Uint8Array): string {
+  const boundary = 'x';
+  return (
+    `--${boundary}\r\n` +
+    'Content-Disposition: form-data; name="file"; filename="pic.png"\r\n' +
+    'Content-Type: image/png\r\n' +
+    '\r\n' +
+    Buffer.from(bytes).toString('latin1') +
+    `\r\n--${boundary}--\r\n`
+  );
+}
+
+describe('session purge on every route family (audit 2026-11-15)', () => {
+  let kv: KVNamespace;
+  let ctx: RouteContext;
+  let adminSession: string;
+  let deletedKeys: string[];
+
+  beforeEach(async () => {
+    ({ kv } = mockKv());
+    ctx = { env: makeEnv(kv) };
+    deletedKeys = [];
+    const originalDelete = kv.delete.bind(kv);
+    (kv as unknown as { delete: (key: string) => Promise<void> }).delete = async (key: string) => {
+      deletedKeys.push(key);
+      await originalDelete(key);
+    };
+    const sessions = new SessionManager(kv, KEY);
+    adminSession = await sessions.createSession('ghp_dead-admin-token', {
+      id: 1,
+      login: 'octocat',
+      name: 'Octocat',
+      avatarUrl: null,
+    });
+    // The review queue enumerates client accesses' repositories; a record
+    // makes the route actually call GitHub (which answers 401 below).
+    const store = new ClientStore(kv, KEY);
+    await store.create({
+      clientId: 'acme-corp',
+      label: 'ACME Corp',
+      repo: { owner: 'octocat', repo: 'site' },
+      createdBy: 'octocat',
+      passwordHash: 'hash',
+      salt: 'salt',
+      githubToken: await store.encryptGitHubToken('ghp_dead-admin-token'),
+      createdAt: '2026-11-15T00:00:00Z',
+      lastUsedAt: null,
+      revoked: false,
+      failedAttempts: 0,
+      lockedUntil: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('purges the session when a review route reports the token invalid', async () => {
+    // The queue listing swallows per-repo failures (one dead repo must not
+    // hide the rest), so exercise the merge action, which maps the upstream
+    // 401 to the marker-carrying response.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('bad credentials', { status: 401 })),
+    );
+
+    const response = await handleApiRequest(
+      '/api/review/octocat/site/7/merge',
+      new Request('http://localhost/api/review/octocat/site/7/merge', {
+        method: 'POST',
+        headers: { Cookie: `__Host-cms_session=${adminSession}`, 'X-CSRF-Token': 'x' },
+      }),
+      ctx.env,
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('x-cms-github-token-invalid')).toBe('1');
+    expect(deletedKeys.length).toBeGreaterThan(0);
+    const sessions = new SessionManager(kv, KEY);
+    expect(await sessions.getSession(adminSession)).toBeNull();
   });
 });

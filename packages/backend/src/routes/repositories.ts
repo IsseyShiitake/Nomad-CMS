@@ -27,6 +27,7 @@ import type {
   SessionKind,
 } from '@cms/shared';
 import {
+  CMS_PLACEHOLDER_IMAGE_SRC,
   MAX_IMAGE_BYTES,
   safePagePath,
   safeAssetPath,
@@ -79,6 +80,16 @@ async function resolveSession(
   const sessions = new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env));
   const session: SessionRecord | null = await sessions.getSession(token);
   if (!session) return null;
+  // Trust-boundary re-check (audit 2026-11-15, must-fix): the access record
+  // can be revoked or deleted while the session cookie is still live — the
+  // 7-day sliding session is NOT invalidated by either, and it is not
+  // indexed by clientId to purge. The session alone must not keep granting
+  // write access on the admin's stored token.
+  if ((session.kind ?? 'admin') === 'client' && session.clientId) {
+    const store = new ClientStore(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env));
+    const record = await store.get(session.clientId);
+    if (!record || record.revoked) return null;
+  }
   return {
     client: new GitHubClient(session.githubToken),
     kind: session.kind ?? 'admin',
@@ -219,6 +230,30 @@ function pageCommitMessage(pagePath: string): string {
 /** Builds the commit message for an image upload. */
 function imageCommitMessage(imagePath: string): string {
   return `CMS: Uploaded ${imagePath}`;
+}
+
+/**
+ * Server-side twin of the editor's template-state save guard (audit
+ * 2026-11-15, closing the documented direct-API hole from the 2026-11-09
+ * design doc). Detects the editor's placeholder image src (both attribute
+ * quote styles) and the untouched "New <tag>" insert text. The editor
+ * blocks these before the API is ever called, so a hit here means a direct
+ * API save — the same committed-placeholder 404 the client guard prevents.
+ *
+ * Substring matching is intentionally conservative: the exact placeholder
+ * strings the editor generates (`src="/images/placeholder.png"`,
+ * `<p>New p</p>`) are what a committed placeholder looks like serialized;
+ * prose that merely mentions them is vanishingly rare in real pages.
+ */
+function findPlaceholderContent(content: string): 'placeholder_image' | 'placeholder_text' | null {
+  const src = CMS_PLACEHOLDER_IMAGE_SRC;
+  if (content.includes(`src="${src}"`) || content.includes(`src='${src}'`)) {
+    return 'placeholder_image';
+  }
+  if (content.includes('>New h1<') || content.includes('>New h2<') || content.includes('>New p<')) {
+    return 'placeholder_text';
+  }
+  return null;
 }
 
 /** Generic extension → MIME table for repository assets (preview proxy + image listings). */
@@ -640,6 +675,14 @@ export const repositoryRoutes = {
         return jsonError('invalid_content', 'Page content is too large', 413);
       }
 
+      // Placeholder guard (server-side twin of the editor's save guard):
+      // reject content still carrying the template placeholder image src or
+      // the untouched "New <tag>" insert text.
+      const placeholder = findPlaceholderContent(content);
+      if (placeholder) {
+        return jsonError(placeholder, 'Page still contains template placeholder content', 422);
+      }
+
       // Virtual Vercel-direct repository: saving uploads the changed file
       // and re-deploys with a full manifest (a new immutable deployment).
       try {
@@ -905,7 +948,12 @@ export const repositoryRoutes = {
               existingSha =
                 tree.find((item) => item.type === 'blob' && item.path === imagePath)?.sha ?? null;
             } catch (error) {
+              // Expected only: the truncated-tree signal (propagates as the
+              // repo-size error) and the branch-has-no-tree 404 (first upload
+              // → create path). Anything else must surface, not degrade to a
+              // create-PUT → 422 → opaque 502 (audit 2026-11-15).
               if (error instanceof TreeTruncatedError) throw error;
+              if (!(error instanceof GitHubError && error.status === 404)) throw error;
             }
 
             const image = await client.uploadImage(
@@ -951,8 +999,10 @@ export const repositoryRoutes = {
           existingSha =
             tree.find((item) => item.type === 'blob' && item.path === imagePath)?.sha ?? null;
         } catch (error) {
+          // Same narrowing as the review-mode path above: only the truncated
+          // tree and the empty-repository 404 are expected here.
           if (error instanceof TreeTruncatedError) throw error;
-          // Missing tree (empty repo, first upload) — create path.
+          if (!(error instanceof GitHubError && error.status === 404)) throw error;
         }
 
         const image = await client.uploadImage(

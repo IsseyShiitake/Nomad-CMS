@@ -27,6 +27,17 @@ export interface ImageAsset {
   updatedAt: string | null;
 }
 
+/**
+ * The editor's template placeholder image src.
+ *
+ * Shared so the backend save route can enforce the same placeholder guard
+ * the editor applies client-side (a committed placeholder is a guaranteed
+ * 404 on the live site). Server-side the double-quoted and single-quoted
+ * attribute forms are both rejected; see findPlaceholderContent in the
+ * repositories route.
+ */
+export const CMS_PLACEHOLDER_IMAGE_SRC = '/images/placeholder.png';
+
 /** Result of uploading an image to a repository. */
 export interface UploadImageResult {
   /** Whether the upload succeeded. */

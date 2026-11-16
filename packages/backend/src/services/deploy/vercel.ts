@@ -266,7 +266,14 @@ export class VercelClient {
     const contentType = (response.headers.get('Content-Type') ?? '').toLowerCase();
     const raw = new Uint8Array(await response.arrayBuffer());
     if (contentType.includes('application/json')) {
-      const body = JSON.parse(new TextDecoder().decode(raw)) as { data?: string };
+      // A malformed JSON body with a JSON content-type must surface as a
+      // clean platform 502, not an unmapped SyntaxError 500 (audit 2026-11-15).
+      let body: { data?: string };
+      try {
+        body = JSON.parse(new TextDecoder().decode(raw)) as { data?: string };
+      } catch {
+        throw new PlatformError(502, null, 'Vercel file read returned malformed JSON');
+      }
       if (body?.data) {
         const clean = body.data.replace(/\s/g, '');
         const binary = atob(clean);

@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { Env } from '../env';
-import { SessionManager } from '../services/auth';
+import { ClientStore, SessionManager } from '../services/auth';
 import { deployRoutes } from './deploy';
 import type { RouteContext } from './index';
 
@@ -500,5 +500,74 @@ describe('deploy routes', () => {
     const list = await deployRoutes.handle('/connections', request('/connections', adminSession), ctx);
     const connections = await data<unknown[]>(list);
     expect(connections).toEqual([]);
+  });
+});
+
+describe('deploy routes: revoked client sessions (audit 2026-11-15 follow-up)', () => {
+  let kv: KVNamespace;
+  let ctx: RouteContext;
+  let clientSession: string;
+
+  beforeEach(async () => {
+    const { kv: kvMock } = mockKv();
+    kv = kvMock;
+    ctx = { env: makeEnv(kv) };
+    const sessions = new SessionManager(kv, KEY);
+    const store = new ClientStore(kv, KEY);
+    await store.create({
+      clientId: 'acme-corp',
+      label: 'ACME Corp',
+      repo: { owner: 'octocat', repo: 'site' },
+      createdBy: 'octocat',
+      passwordHash: 'hash',
+      salt: 'salt',
+      githubToken: await store.encryptGitHubToken('ghp_admin'),
+      createdAt: '2026-11-15T00:00:00Z',
+      lastUsedAt: null,
+      revoked: false,
+      failedAttempts: 0,
+      lockedUntil: null,
+    });
+    clientSession = await sessions.createClientSession(
+      'ghp_client',
+      { id: 0, login: 'acme', name: 'acme', avatarUrl: null },
+      { owner: 'octocat', repo: 'site' },
+      'octocat',
+      null,
+      'acme-corp',
+    );
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function linksRequest(): Request {
+    return new Request('http://localhost/api/deploy/links/octocat/site', {
+      headers: { Cookie: `__Host-cms_session=${clientSession}`, 'X-CSRF-Token': 'x' },
+    });
+  }
+
+  it('a live access still reads links for its locked repository', async () => {
+    const response = await deployRoutes.handle('/links/octocat/site', linksRequest(), ctx);
+    expect(response.status).toBe(200);
+  });
+
+  it('a revoked access loses deploy-route reads (401) despite the live cookie', async () => {
+    const store = new ClientStore(kv, KEY);
+    await store.update('acme-corp', { revoked: true });
+
+    const response = await deployRoutes.handle('/links/octocat/site', linksRequest(), ctx);
+    expect(response.status).toBe(401);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it('a deleted access loses deploy-route reads (401) despite the live cookie', async () => {
+    const store = new ClientStore(kv, KEY);
+    await store.delete('acme-corp');
+
+    const response = await deployRoutes.handle('/links/octocat/site', linksRequest(), ctx);
+    expect(response.status).toBe(401);
   });
 });

@@ -30,7 +30,7 @@ import type {
   SessionKind,
 } from '@cms/shared';
 import { json, jsonError, readSessionToken } from '../core/http';
-import { SessionManager, resolveEncryptionKey } from '../services/auth';
+import { ClientStore, SessionManager, resolveEncryptionKey } from '../services/auth';
 import type { SessionRecord } from '../services/auth';
 import { isValidOwnerRepo } from '../services/github';
 import {
@@ -79,6 +79,16 @@ async function resolveSession(
     await resolveEncryptionKey(ctx.env),
   ).getSession(token);
   if (!session) return null;
+  // Trust-boundary re-check, same as the repositories routes (audit
+  // 2026-11-15): a revoked or deleted client access must lose deploy-route
+  // reads too — links/status for its locked repo are repository data.
+  if ((session.kind ?? 'admin') === 'client' && session.clientId) {
+    const record = await new ClientStore(
+      ctx.env.SESSION_KV,
+      await resolveEncryptionKey(ctx.env),
+    ).get(session.clientId);
+    if (!record || record.revoked) return null;
+  }
   return { session, login: session.user.login, kind: session.kind ?? 'admin' };
 }
 

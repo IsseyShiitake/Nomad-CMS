@@ -66,6 +66,7 @@ function renderElement(
           <ElementEditor
             element={element}
             callbacks={makeCallbacks()}
+            images={[]}
             isActive={isActive}
             onActivate={onActivate}
           />
@@ -97,6 +98,7 @@ describe('ElementEditor text elements', () => {
           <ElementEditor
             element={TEXT_ELEMENT}
             callbacks={callbacks}
+            images={[]}
             isActive={false}
             onActivate={() => {}}
           />
@@ -156,6 +158,7 @@ describe('ElementEditor image elements', () => {
           <ElementEditor
             element={IMAGE_ELEMENT}
             callbacks={callbacks}
+            images={[]}
             isActive={false}
             onActivate={() => {}}
           />
@@ -170,6 +173,51 @@ describe('ElementEditor image elements', () => {
     expect(callbacks.onImageFile).toHaveBeenCalledWith('el--img', file);
     // The queued filename replaces the placeholder.
     expect(screen.getByText('photo.png')).not.toBeNull();
+  });
+});
+
+describe('ElementEditor existing-image picker (audit 2026-11-15)', () => {
+  const IMAGES = [
+    { path: 'images/hero.png', name: 'hero.png', size: 10, mimeType: 'image/png', sha: 'a', updatedAt: null },
+    { path: 'images/logo.png', name: 'logo.png', size: 5, mimeType: 'image/png', sha: 'b', updatedAt: null },
+  ];
+
+  it('defaults the insert tag to p (audit papercut: was h1)', () => {
+    renderElement(TEXT_ELEMENT);
+    const insertSelect = screen.getByRole('combobox', { name: 'Insert type' }) as HTMLSelectElement;
+    expect(insertSelect.value).toBe('p');
+  });
+
+  it('lists existing repository images and forwards the picked path', () => {
+    const callbacks = makeCallbacks();
+    render(
+      <I18nProvider>
+        <ul>
+          <ElementEditor
+            element={IMAGE_ELEMENT}
+            callbacks={callbacks}
+            images={IMAGES}
+            isActive={false}
+            onActivate={() => {}}
+          />
+        </ul>
+      </I18nProvider>,
+    );
+
+    const select = screen.getByRole('combobox', { name: 'Pick an existing image from the repository' });
+    expect(select.tagName).toBe('SELECT');
+    // Options: the placeholder plus one per existing image.
+    const options = Array.from(select.querySelectorAll('option')).map((o) => o.value);
+    expect(options).toEqual(['', 'images/hero.png', 'images/logo.png']);
+
+    fireEvent.change(select, { target: { value: 'images/logo.png' } });
+    expect(callbacks.onReplaceImage).toHaveBeenCalledWith('el--img', 'images/logo.png');
+  });
+
+  it('is hidden when the repository has no images yet', () => {
+    renderElement(IMAGE_ELEMENT);
+    // The row still has the insert-type select; the PICKER must be absent.
+    expect(screen.queryByRole('combobox', { name: 'Pick an existing image from the repository' })).toBeNull();
   });
 });
 
@@ -218,6 +266,7 @@ describe('ElementEditor inline-markup warning', () => {
             <ElementEditor
               element={{ ...MARKUP_ELEMENT, textContent: 'Call us.', containsMarkup: false }}
               callbacks={makeCallbacks()}
+              images={[]}
               isActive={false}
               onActivate={() => {}}
             />

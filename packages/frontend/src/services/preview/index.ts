@@ -1,6 +1,55 @@
 import { buildUniqueSelector } from '@/services/htmlParser';
 
 /**
+ * Rewrites root-absolute asset URLs (`/css/style.css`, `/images/x.png`) to
+ * the same-origin proxy base. A `<base>` tag fixes RELATIVE urls only:
+ * root-absolute ones ignore the base path and resolve against the origin
+ * root, where the SPA fallback serves index.html instead of the asset —
+ * unstyled previews with broken images for such sites (audit 2026-11-15).
+ * Protocol-relative (`//cdn…`) and data URLs are left untouched — they do
+ * not address repository files. Only called when the preview INJECTS its
+ * base: a page declaring its own `<base>` resolves root-absolute URLs
+ * against that base's origin, which the proxy must not second-guess.
+ *
+ * Anchor hrefs are excluded — they are stripped further down to make links
+ * inert, and converting navigation URLs into asset-proxy URLs would be
+ * wrong anyway.
+ */
+function rewriteRootAbsoluteUrls(doc: Document, baseHref: string): void {
+  const base = baseHref.endsWith('/') ? baseHref : `${baseHref}/`;
+  const rewrite = (value: string): string =>
+    value.startsWith('/') && !value.startsWith('//') ? `${base}${value.slice(1)}` : value;
+
+  const URL_ATTRS = ['src', 'href', 'poster'] as const;
+  for (const el of Array.from(doc.querySelectorAll('[src], [href], [poster]'))) {
+    for (const attr of URL_ATTRS) {
+      const value = el.getAttribute(attr);
+      if (value) {
+        const rewritten = rewrite(value);
+        if (rewritten !== value) el.setAttribute(attr, rewritten);
+      }
+    }
+  }
+  for (const el of Array.from(doc.querySelectorAll('[srcset]'))) {
+    const srcset = el.getAttribute('srcset');
+    if (!srcset) continue;
+    // Rewrite per candidate ON the original string, so untouched candidates —
+    // data: URIs in particular, whose base64 payload can contain commas the
+    // split would expose — keep their exact bytes (a naive split/rejoin used
+    // to insert a space after such a comma and corrupt the URI).
+    let rewritten = srcset;
+    for (const entry of srcset.split(',')) {
+      const candidate = entry.trim();
+      const url = candidate.split(/\s+/)[0] ?? '';
+      if (!url.startsWith('/') || url.startsWith('//')) continue;
+      const replaced = candidate.replace(url, `${base}${url.slice(1)}`);
+      rewritten = rewritten.replace(candidate, replaced);
+    }
+    if (rewritten !== srcset) el.setAttribute('srcset', rewritten);
+  }
+}
+
+/**
  * Builds a sandboxed preview document (shared by the editor preview and
  * the repository miniature tiles):
  * - strips `<script>` elements, inline event handlers, and
@@ -36,6 +85,7 @@ export function buildSrcDoc(html: string, baseHref: string, elementSelector: str
     const base = doc.createElement('base');
     base.setAttribute('href', baseHref);
     doc.head.insertBefore(base, doc.head.firstChild);
+    rewriteRootAbsoluteUrls(doc, baseHref);
   }
   if (elementSelector) {
     // Stamp each editable element with the exact id its panel row uses.

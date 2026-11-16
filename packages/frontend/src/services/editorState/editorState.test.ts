@@ -127,9 +127,10 @@ describe('InMemoryEditorController dirty state', () => {
     // A failed edit must NOT clear the dirty flag — otherwise the Save
     // button (disabled while !isDirty) locks the user out of saving.
     const failed = controller.applyEdit({ elementId: img.id, type: 'edit-text', value: 'x' });
-    expect(failed.error).toBe('Text editing is not available for images.');
+    // Parser messages surface as machine codes the UI localizes.
+    expect(failed.error).toBe('text_edit_not_for_images');
     expect(controller.isDirty).toBe(true);
-    expect(controller.saveError).toBe('Text editing is not available for images.');
+    expect(controller.saveError).toBe('text_edit_not_for_images');
   });
 });
 
@@ -372,5 +373,160 @@ describe('InMemoryEditorController flatten detection', () => {
     vi.mocked(savePage).mockResolvedValueOnce({ success: true, sha: 'sha-2', error: null });
     await controller.save();
     expect(controller.flattenedMarkupEdits()).toEqual([]);
+  });
+
+  it('survives id shifts from later structural edits (audit 2026-11-15)', async () => {
+    const controller = await markupController();
+    const linked = controller.document!.elements.find((e) =>
+      e.textContent?.includes('Call'),
+    )!;
+    controller.applyEdit({ elementId: linked.id, type: 'edit-text', value: 'Call us.' });
+
+    // Inserting a paragraph ABOVE shifts every following id (nth-of-type
+    // selectors) — the old save-time id matching lost the flagged element.
+    const h1 = controller.document!.elements.find((e) => e.tagName === 'h1')!;
+    controller.applyEdit({
+      elementId: h1.id,
+      type: 'insert-below',
+      value: null,
+      insertTag: 'p',
+    });
+
+    // The edited element (whose markup will flatten) is STILL flagged.
+    const flagged = controller.flattenedMarkupEdits();
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]!.tagName).toBe('p');
+    expect(flagged[0]!.preview).toContain('Call');
+  });
+
+  it('flags a text edit to a structural block container (audit 2026-11-15)', async () => {
+    // A data-editable-block container holding h1/p/img: one edit replaces
+    // the whole subtree with plain text — the save confirm must fire.
+    const controller = new InMemoryEditorController({
+      parser: new DomHtmlParser(),
+      owner: 'octocat',
+      repo: 'site',
+      imageManager: {
+        uploadImage: async () => {
+          throw new Error('no uploads here');
+        },
+        listImages: async () => [],
+      },
+    });
+    vi.mocked(getPage).mockResolvedValue({
+      path: 'index.html',
+      content:
+        '<html><body><section data-editable-block><h1>Title</h1><p>Copy</p><img src="a.png"></section></body></html>',
+      sha: 'sha-1',
+      updatedAt: null,
+    });
+    await controller.loadPage('index.html', 'editable');
+
+    const block = controller.document!.elements.find((e) => e.tagName === 'section')!;
+    const outcome = controller.applyEdit({ elementId: block.id, type: 'edit-text', value: 'Plain' });
+    expect(outcome.error).toBeNull();
+
+    const flagged = controller.flattenedMarkupEdits();
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]!.tagName).toBe('section');
+    expect(flagged[0]!.preview).toContain('Title');
+  });
+
+  it('un-records the flatten risk when the edit is undone', async () => {
+    const controller = await markupController();
+    const linked = controller.document!.elements.find((e) =>
+      e.textContent?.includes('Call'),
+    )!;
+    controller.applyEdit({ elementId: linked.id, type: 'edit-text', value: 'Call us.' });
+    expect(controller.flattenedMarkupEdits()).toHaveLength(1);
+
+    controller.undo();
+    expect(controller.flattenedMarkupEdits()).toEqual([]);
+    // The document is back to the pre-edit state.
+    expect(controller.document!.elements.find((e) => e.textContent?.includes('a@b.fr'))).toBeDefined();
+  });
+
+  it('prunes the flatten risk when the edited element is deleted (N4)', async () => {
+    const controller = await markupController();
+    const linked = controller.document!.elements.find((e) =>
+      e.textContent?.includes('Call'),
+    )!;
+    controller.applyEdit({ elementId: linked.id, type: 'edit-text', value: 'Call us.' });
+    expect(controller.flattenedMarkupEdits()).toHaveLength(1);
+
+    // Deleting the edited element removes it from the pending change — the
+    // save confirm must not keep asking about markup that is already gone.
+    controller.applyEdit({ elementId: linked.id, type: 'delete', value: null });
+    expect(controller.flattenedMarkupEdits()).toEqual([]);
+  });
+});
+
+describe('InMemoryEditorController cleared image src (audit 2026-11-15 papercut)', () => {
+  const noUploads: ImageManager = {
+    uploadImage: async () => {
+      throw new Error('should not upload');
+    },
+    listImages: async () => [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('lets the src be cleared and blocks committing the source-less image', async () => {
+    const controller = new InMemoryEditorController({
+      parser: new DomHtmlParser(),
+      owner: 'octocat',
+      repo: 'site',
+      imageManager: noUploads,
+    });
+    vi.mocked(getPage).mockResolvedValue({
+      path: 'index.html',
+      content: FIXTURE,
+      sha: 'sha-1',
+      updatedAt: null,
+    });
+    await controller.loadPage('index.html', 'generic');
+    const img = controller.document!.elements.find((e) => e.tagName === 'img')!;
+
+    // Clearing the src field is accepted (previously rejected with an error).
+    const outcome = controller.applyEdit({ elementId: img.id, type: 'replace-image', value: '' });
+    expect(outcome.error).toBeNull();
+    expect(controller.document!.elements.find((e) => e.id === img.id)?.src).toBe('');
+
+    // But committing a source-less image is blocked with its own code.
+    await controller.save();
+    expect(controller.saveError).toBe('image_src_missing');
+    expect(savePage).not.toHaveBeenCalled();
+  });
+});
+
+describe('InMemoryEditorController image listing (audit 2026-11-15)', () => {
+  it('loads repository images for the reuse picker and survives listing failures', async () => {
+    const assets: ImageAsset[] = [
+      { path: 'images/hero.png', name: 'hero.png', size: 10, mimeType: 'image/png', sha: 'a', updatedAt: null },
+    ];
+    let failing = false;
+    const controller = new InMemoryEditorController({
+      parser: new DomHtmlParser(),
+      owner: 'octocat',
+      repo: 'site',
+      imageManager: {
+        uploadImage: async () => {
+          throw new Error('not used');
+        },
+        listImages: async () => {
+          if (failing) throw new Error('listing down');
+          return assets;
+        },
+      },
+    });
+
+    await controller.loadImages();
+    expect(controller.images).toEqual(assets);
+
+    failing = true;
+    await controller.loadImages();
+    expect(controller.images).toEqual([]); // additive: failure just empties it
   });
 });

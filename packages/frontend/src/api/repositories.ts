@@ -27,7 +27,7 @@ export async function listRepositories(): Promise<Repository[]> {
 
 /** Fetches a single repository's metadata. */
 export async function getRepository(owner: string, repo: string): Promise<Repository> {
-  return apiRequest<Repository>(`/api/repositories/${owner}/${repo}`, {});
+  return apiRequest<Repository>(`/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {});
 }
 
 /** Lists files and directories at a repository path. */
@@ -37,18 +37,18 @@ export async function listContents(
   path: string,
 ): Promise<RepositoryFile[]> {
   const suffix = path ? `/${encodePath(path)}` : '';
-  return apiRequest<RepositoryFile[]>(`/api/repositories/${owner}/${repo}/contents${suffix}`, {});
+  return apiRequest<RepositoryFile[]>(`/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents${suffix}`, {});
 }
 
 /** Discovers all HTML files in a repository. */
 export async function listPages(owner: string, repo: string): Promise<PageSummary[]> {
-  return apiRequest<ListPagesResponse>(`/api/repositories/${owner}/${repo}/pages`, {});
+  return apiRequest<ListPagesResponse>(`/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pages`, {});
 }
 
 /** Fetches a single page's raw HTML. */
 export async function getPage(owner: string, repo: string, path: string): Promise<Page> {
   return apiRequest<GetPageResponse>(
-    `/api/repositories/${owner}/${repo}/pages/${encodePath(path)}`,
+    `/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pages/${encodePath(path)}`,
     {},
   );
 }
@@ -64,7 +64,7 @@ export async function savePage(
   sha: string | null,
 ): Promise<SavePageResult> {
   return apiRequest<SavePageResponse>(
-    `/api/repositories/${owner}/${repo}/pages/${encodePath(path)}`,
+    `/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pages/${encodePath(path)}`,
     {
       method: 'PUT',
       body: JSON.stringify({ content, sha }),

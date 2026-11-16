@@ -9,7 +9,7 @@
  * never logged or returned to the frontend.
  */
 
-import { encodePath } from '@cms/shared';
+import { encodePath, MAX_IMAGE_BYTES } from '@cms/shared';
 import type {
   ImageAsset,
   Repository,
@@ -308,8 +308,13 @@ export class GitHubClient {
     // page as blank — and a save would commit the blank over the real
     // file. Fall back to the raw host in that case.
     if (data.size > 0 && !data.content) {
+      // The fallback must resolve the SAME ref the contents call used. In
+      // review mode that is the client's cms/<clientId> branch: fetching
+      // HEAD here would pair production content with the review-branch sha,
+      // and the next save would overwrite pending review work (audit
+      // 2026-11-15, must-fix). readRawFile below shows the same pattern.
       const response = await fetch(
-        `https://raw.githubusercontent.com/${owner}/${repo}/HEAD/${encodePath(path)}`,
+        `https://raw.githubusercontent.com/${owner}/${repo}/${ref ? encodeURIComponent(ref) : 'HEAD'}/${encodePath(path)}`,
         {
           headers: {
             Authorization: `Bearer ${this.token}`,
@@ -321,7 +326,19 @@ export class GitHubClient {
       if (!response.ok) {
         throw new GitHubError(response.status, `raw fetch ${response.status}`);
       }
-      const content = new TextDecoder().decode(await response.arrayBuffer());
+      // Cap the raw read at the save gate: a page larger than MAX_IMAGE_BYTES
+      // can never be committed by the CMS (the save route rejects it), so
+      // buffering it is pure memory pressure. The declared Content-Length can
+      // lie, so the post-read byteLength check stays authoritative.
+      const declaredLength = Number.parseInt(response.headers.get('Content-Length') ?? '', 10);
+      if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_BYTES) {
+        throw new GitHubError(413, `raw fetch body too large (declared ${declaredLength})`);
+      }
+      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength > MAX_IMAGE_BYTES) {
+        throw new GitHubError(413, `raw fetch body too large (${buffer.byteLength})`);
+      }
+      const content = new TextDecoder().decode(buffer);
       return { path: data.path, content, sha: data.sha };
     }
 
@@ -501,12 +518,21 @@ export class GitHubClient {
     return this.request<GitHubPullRequest>(`/repos/${owner}/${repo}/pulls/${number}`);
   }
 
-  /** All open pull requests (the admin's review queue lists cms/* ones). */
-  async listOpenPullRequests(owner: string, repo: string): Promise<GitHubPullRequest[]> {
-    const data: GitHubPullRequest[] = await this.request(
-      `/repos/${owner}/${repo}/pulls?state=open&per_page=100`,
-    );
-    return data;
+  /** All open pull requests (the admin's review queue lists cms/* ones).
+   *
+   * Pages through the full listing — a single per_page=100 call silently
+   * truncates at 100 open PRs; a short page ends the loop. The 20-page
+   * bound guards against a misbehaving endpoint, matching listRepositories. */
+  async listOpenPullRequests(owner: string, repo: string, perPage = 100): Promise<GitHubPullRequest[]> {
+    const out: GitHubPullRequest[] = [];
+    for (let page = 1; page <= 20; page += 1) {
+      const batch = await this.request<GitHubPullRequest[]>(
+        `/repos/${owner}/${repo}/pulls?state=open&per_page=${perPage}&page=${page}`,
+      );
+      out.push(...batch);
+      if (batch.length < perPage) break;
+    }
+    return out;
   }
 
   /** Opens a pull request from `head` into `base`. */
@@ -527,15 +553,17 @@ export class GitHubClient {
 
   /**
    * Merges the base branch into a pull request's branch (best-effort
-   * staleness clearance before merging). A no-op update or a conflict both
-   * surface as GitHubError 422 — the caller proceeds to merge and lets a
-   * real conflict fail there.
+   * staleness clearance before merging). `expected_head_sha` is deliberately
+   * OMITTED: sending null is rejected by GitHub (422) on every call, which
+   * made this step dead (audit 2026-11-15). A no-op update or a conflict
+   * still surface as GitHubError 422 — the caller proceeds to merge and
+   * lets a real conflict fail there.
    */
   async updatePullRequestBranch(owner: string, repo: string, number: number): Promise<void> {
     await this.request(`/repos/${owner}/${repo}/pulls/${number}/update-branch`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expected_head_sha: null }),
+      body: JSON.stringify({}),
     });
   }
 

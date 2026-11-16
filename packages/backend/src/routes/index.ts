@@ -24,6 +24,29 @@ export interface RouteContext {
   env: Env;
 }
 
+/**
+ * Purges the session behind a 401 carrying the x-cms-github-token-invalid
+ * marker: the GitHub token backing the session is invalid or expired (e.g.
+ * the user revoked the OAuth app). Purging means the next /session returns
+ * null and the frontend shows the sign-in screen, rather than retrying with
+ * a dead token. Unauthenticated/forged-cookie 401s do NOT trigger a
+ * (billed) KV delete — the marker is set only by mapGitHubError for a
+ * genuine upstream token rejection. Applied to every route family (audit
+ * 2026-11-15: it previously ran for the repositories routes only, letting
+ * dead-token sessions linger via deploy/review routes).
+ */
+async function purgeIfTokenInvalid(request: Request, env: Env, response: Response): Promise<Response> {
+  if (response.status === 401 && response.headers.get('x-cms-github-token-invalid') === '1') {
+    const token = readSessionToken(request);
+    if (token) {
+      await new SessionManager(env.SESSION_KV, await resolveEncryptionKey(env))
+        .deleteSession(token)
+        .catch(() => {});
+    }
+  }
+  return response;
+}
+
 /** Dispatches an /api request to the matching route module. */
 export async function handleApiRequest(
   path: string,
@@ -54,41 +77,43 @@ export async function handleApiRequest(
     // forbid the very iframe this endpoint serves. previewRoutes sets its
     // own framing-capable headers; only the CORS grant is layered on top
     // (split-domain deployments preflight this route like any other).
-    return layerCors(env, request, await previewRoutes.handle(path.replace('/api/preview', ''), request, ctx));
+    return layerCors(env, request, await purgeIfTokenInvalid(request, env, await previewRoutes.handle(path.replace('/api/preview', ''), request, ctx)));
   }
 
   if (path.startsWith('/api/repositories')) {
-    const response = await repositoryRoutes.handle(path.replace('/api/repositories', ''), request, ctx);
-    // A 401 carrying the x-cms-github-token-invalid marker means the GitHub
-    // token backing the session is invalid or expired (e.g. the user revoked
-    // the OAuth app). Purge the session so the next /session returns null and
-    // the frontend shows the sign-in screen, rather than retrying with a dead
-    // token. Unauthenticated/forged-cookie 401s do NOT trigger a (billed) KV
-    // delete.
-    if (
-      response.status === 401 &&
-      response.headers.get('x-cms-github-token-invalid') === '1'
-    ) {
-      const token = readSessionToken(request);
-      if (token) {
-        await new SessionManager(env.SESSION_KV, await resolveEncryptionKey(env))
-          .deleteSession(token)
-          .catch(() => {});
-      }
-    }
-    return finalizeResponse(env, request, response);
+    return finalizeResponse(
+      env,
+      request,
+      await purgeIfTokenInvalid(
+        request,
+        env,
+        await repositoryRoutes.handle(path.replace('/api/repositories', ''), request, ctx),
+      ),
+    );
   }
 
   if (path.startsWith('/api/clients')) {
-    return finalizeResponse(env, request, await clientsRoutes.handle(path.replace('/api/clients', ''), request, ctx));
+    return finalizeResponse(
+      env,
+      request,
+      await purgeIfTokenInvalid(request, env, await clientsRoutes.handle(path.replace('/api/clients', ''), request, ctx)),
+    );
   }
 
   if (path.startsWith('/api/review')) {
-    return finalizeResponse(env, request, await reviewRoutes.handle(path.replace('/api/review', ''), request, ctx));
+    return finalizeResponse(
+      env,
+      request,
+      await purgeIfTokenInvalid(request, env, await reviewRoutes.handle(path.replace('/api/review', ''), request, ctx)),
+    );
   }
 
   if (path.startsWith('/api/deploy')) {
-    return finalizeResponse(env, request, await deployRoutes.handle(path.replace('/api/deploy', ''), request, ctx));
+    return finalizeResponse(
+      env,
+      request,
+      await purgeIfTokenInvalid(request, env, await deployRoutes.handle(path.replace('/api/deploy', ''), request, ctx)),
+    );
   }
 
   return finalizeResponse(env, request, jsonError('not_found', 'Route not found', 404));

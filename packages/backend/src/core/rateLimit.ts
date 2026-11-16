@@ -17,10 +17,23 @@
  *  - requests without CF-Connecting-IP (local dev, tests) share one
  *    "unknown" bucket — fail-safe (restrictive), never fail-open.
  *
- * Honest limit: a botnet rotating source IPs spreads across buckets and
- * still burns up to `limit` writes per IP per window. This raises the
- * attack cost ~100× and defeats trivial loops; it does not make a
- * free-tier instance un-DoS-able (raw request volume remains a
+ * Honest limits:
+ *  - the counter is KV get-then-put, NOT an atomic increment: concurrent
+ *    requests can all read the same count and all pass, exceeding the limit
+ *    by roughly the burst's concurrency factor. Cloudflare KV has no atomic
+ *    increment — this is an accepted tradeoff (the limiter raises attack
+ *    cost; it is not a hard quota), and each over-limit request still
+ *    writes nothing;
+ *  - a botnet rotating source IPs spreads across buckets and still burns up
+ *    to `limit` writes per IP per window;
+ *  - requests without CF-Connecting-IP share one "unknown" bucket. That is
+ *    fail-safe (restrictive) by design for local dev and tests — but it
+ *    means a Worker reachable WITHOUT Cloudflare in front (custom domain
+ *    with proxy off) shares one budget across ALL visitors. Deploy behind
+ *    Cloudflare (the default for workers.dev and proxied custom domains).
+ *
+ * This raises the attack cost ~100× and defeats trivial loops; it does not
+ * make a free-tier instance un-DoS-able (raw request volume remains a
  * platform-level concern).
  */
 
@@ -31,6 +44,16 @@ export const AUTHORIZE_RATE_LIMIT = 10;
 
 /** Fixed-window size for the authorize limiter, in seconds. */
 export const AUTHORIZE_RATE_WINDOW_SECONDS = 3600;
+
+/** Max client-login attempts per source IP per window. Generous enough for
+ * several clients behind one NAT (each including failed attempts); tight
+ * enough to cap the unauthenticated PBKDF2 (100k iterations) burn that the
+ * per-account lockout cannot enforce against parallel or multi-account
+ * spraying. */
+export const CLIENT_LOGIN_RATE_LIMIT = 20;
+
+/** Fixed-window size for the client-login limiter, in seconds. */
+export const CLIENT_LOGIN_RATE_WINDOW_SECONDS = 3600;
 
 /** Best-effort client IP for rate limiting. The edge sets
  *  CF-Connecting-IP on workers.dev/custom domains; attackers cannot
@@ -69,6 +92,17 @@ export async function checkRateLimit(
       retryAfterSeconds: Math.max(1, Math.ceil(((bucket + 1) * windowMs - now) / 1000)),
     };
   }
-  await env.SESSION_KV.put(key, String(count + 1), { expirationTtl: windowSeconds });
+  // KV rejects writes to the same key faster than 1/second: a parallel burst
+  // (e.g. scripted client-login attempts from one IP) turned this put into an
+  // unhandled throw and the routes answered raw 500s (rig finding N2,
+  // 2026-11-16). The limiter is a cost-raiser, not a hard quota — on a
+  // rejected write, allow the request and let the read gate converge next
+  // window (documented honest limit: limits are soft under concurrency).
+  try {
+    await env.SESSION_KV.put(key, String(count + 1), { expirationTtl: windowSeconds });
+  } catch {
+    // Undercounted for this window; nothing to surface — the per-account
+    // lockout and the read gate above still apply.
+  }
   return { allowed: true, retryAfterSeconds: 0 };
 }

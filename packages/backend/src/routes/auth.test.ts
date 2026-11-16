@@ -10,7 +10,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../env';
 import { sessionCookie } from '../core/http';
-import { AUTHORIZE_RATE_LIMIT, AUTHORIZE_RATE_WINDOW_SECONDS } from '../core/rateLimit';
+import { ClientStore, SessionManager } from '../services/auth';
+import {
+  AUTHORIZE_RATE_LIMIT,
+  AUTHORIZE_RATE_WINDOW_SECONDS,
+  CLIENT_LOGIN_RATE_LIMIT,
+} from '../core/rateLimit';
 import { authRoutes } from './auth';
 import type { RouteContext } from './index';
 
@@ -268,8 +273,7 @@ describe('operator pinning (instance_locked)', () => {
 
 describe('cookie deployment mode', () => {
   it('sets Lax+Secure for same-origin https deployments (no CORS allowlist)', () => {
-    const request = new Request('http://localhost/api/auth/session');
-    const cookie = sessionCookie(true, request, 'tok', 3600, false);
+    const cookie = sessionCookie(true, 'tok', 3600, false);
     expect(cookie).toContain('__Host-cms_session=');
     expect(cookie).toContain('SameSite=Lax');
     expect(cookie).toContain('Secure');
@@ -277,15 +281,13 @@ describe('cookie deployment mode', () => {
   });
 
   it('sets None+Secure for https deployments with a CORS allowlist', () => {
-    const request = new Request('http://localhost/api/auth/session');
-    const cookie = sessionCookie(true, request, 'tok', 3600, true);
+    const cookie = sessionCookie(true, 'tok', 3600, true);
     expect(cookie).toContain('SameSite=None');
     expect(cookie).toContain('Secure');
   });
 
   it('sets Lax without Secure for plain-http local development', () => {
-    const request = new Request('https://proxied.example.com/api/auth/session');
-    const cookie = sessionCookie(false, request, 'tok', 3600, false);
+    const cookie = sessionCookie(false, 'tok', 3600, false);
     expect(cookie).toContain('SameSite=Lax');
     expect(cookie).not.toContain('Secure');
   });
@@ -379,4 +381,146 @@ describe('authorize rate limiting (per-IP KV budget guard)', () => {
     vi.setSystemTime(new Date('2026-10-06T13:00:00.001Z'));
     expect((await authorizeFrom('203.0.113.40')).status).toBe(200);
   });
+});
+
+describe('client-login rate limiting (per-IP, audit 2026-11-15)', () => {
+  let kv: KVNamespace;
+  let ctx: RouteContext;
+
+  beforeEach(() => {
+    ({ kv } = mockKv());
+    ctx = { env: makeEnv(kv) };
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** One POST /client-login for unknown credentials from the given IP. */
+  function loginFrom(ip: string, clientId = 'nobody-0000'): Promise<Response> {
+    return authRoutes.handle(
+      '/client-login',
+      new Request('http://localhost/api/auth/client-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'CF-Connecting-IP': ip,
+        },
+        body: JSON.stringify({ clientId, password: 'whatever' }),
+      }),
+      ctx,
+    );
+  }
+
+  it('caps unauthenticated PBKDF2 attempts per source IP with 429', async () => {
+    // The per-account lockout cannot enforce a ceiling against parallel or
+    // multi-account spraying; this per-IP limit is the real gate.
+    for (let i = 0; i < CLIENT_LOGIN_RATE_LIMIT; i += 1) {
+      const response = await loginFrom('203.0.113.50');
+      expect(response.status).toBe(401);
+    }
+
+    const limited = await loginFrom('203.0.113.50');
+    expect(limited.status).toBe(429);
+    const { error } = (await limited.json()) as { error: { code: string } };
+    expect(error.code).toBe('rate_limited');
+    const retryAfter = Number.parseInt(limited.headers.get('Retry-After') ?? '', 10);
+    expect(retryAfter).toBeGreaterThan(0);
+  });
+
+  it('isolates the budget per source IP', async () => {
+    for (let i = 0; i < CLIENT_LOGIN_RATE_LIMIT; i += 1) {
+      await loginFrom('203.0.113.60');
+    }
+    expect((await loginFrom('203.0.113.60')).status).toBe(429);
+    // A different source IP has its own budget.
+    expect((await loginFrom('203.0.113.61')).status).toBe(401);
+  });
+
+  it('is enforced before credentials are evaluated (429 even for a valid body)', async () => {
+    // Exhaust the IP first.
+    for (let i = 0; i < CLIENT_LOGIN_RATE_LIMIT; i += 1) {
+      await loginFrom('203.0.113.62');
+    }
+    // A request with a VALID-shaped body is still limited — the PBKDF2 burn
+    // never runs for over-limit IPs.
+    const limited = await loginFrom('203.0.113.62', 'some-valid-id');
+    expect(limited.status).toBe(429);
+  });
+});
+
+describe('GET /session revocation check (audit 2026-11-15 follow-up)', () => {
+  let kv: KVNamespace;
+  let ctx: RouteContext;
+  let clientSession: string;
+
+  beforeEach(async () => {
+    ({ kv } = mockKv());
+    ctx = { env: makeEnv(kv) };
+    const sessions = new SessionManager(kv, KEY);
+    const store = new ClientStore(kv, KEY);
+    await store.create({
+      clientId: 'acme-corp',
+      label: 'ACME Corp',
+      repo: { owner: 'octocat', repo: 'site' },
+      createdBy: 'octocat',
+      passwordHash: 'hash',
+      salt: 'salt',
+      githubToken: await store.encryptGitHubToken('ghp_admin'),
+      createdAt: '2026-11-15T00:00:00Z',
+      lastUsedAt: null,
+      revoked: false,
+      failedAttempts: 0,
+      lockedUntil: null,
+    });
+    clientSession = await sessions.createClientSession(
+      'ghp_admin',
+      { id: 0, login: 'acme', name: 'acme', avatarUrl: null },
+      { owner: 'octocat', repo: 'site' },
+      'octocat',
+      null,
+      'acme-corp',
+    );
+  });
+
+  /** GET /session with the client session cookie. */
+  function sessionRequest(): Promise<Response> {
+    return authRoutes.handle(
+      '/session',
+      new Request('http://localhost/api/auth/session', {
+        headers: { Cookie: `__Host-cms_session=${clientSession}` },
+      }),
+      ctx,
+    );
+  }
+
+  it('a live access gets its session info (with the live review flag)', async () => {
+    await patchAccess({ requireApproval: true });
+    const response = await sessionRequest();
+    expect(response.status).toBe(200);
+    const info = ((await response.json()) as { data: { kind: string; reviewRequired?: boolean } }).data;
+    expect(info.kind).toBe('client');
+    expect(info.reviewRequired).toBe(true);
+  });
+
+  it('a revoked access is answered as signed out (data: null)', async () => {
+    await patchAccess({ revoked: true });
+    const response = await sessionRequest();
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { data: unknown }).data).toBeNull();
+  });
+
+  it('a deleted access is answered as signed out (data: null)', async () => {
+    const store = new ClientStore(kv, KEY);
+    await store.delete('acme-corp');
+    const response = await sessionRequest();
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { data: unknown }).data).toBeNull();
+  });
+
+  /** Local helper: patch the access record. */
+  async function patchAccess(patch: { revoked?: boolean; requireApproval?: boolean }): Promise<void> {
+    const store = new ClientStore(kv, KEY);
+    await store.update('acme-corp', patch);
+  }
 });
