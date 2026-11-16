@@ -6,6 +6,7 @@ import { getPage, listPages } from '@/api';
 import { config } from '@/config';
 import { useI18n } from '@/i18n';
 import { buildSrcDoc } from '@/services/preview';
+import { LockIcon, GlobeIcon, ArrowRightIcon } from '@/ui/components/icons';
 import './RepoTile.css';
 
 /** How long to wait for the thumbnail iframe before trying the next URL. */
@@ -146,7 +147,7 @@ export function RepoTile(props: {
   showVisibility?: boolean;
 }): JSX.Element {
   const { repo, onSelect, size = 'tile', className, liveUrls = [], showVisibility = true } = props;
-  const { m } = useI18n();
+  const { m, locale } = useI18n();
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [frameSrc, setFrameSrc] = useState<string | null>(null);
@@ -293,48 +294,71 @@ export function RepoTile(props: {
 
   const rootClass = `repo-thumb repo-thumb--${size}${className ? ` ${className}` : ''}`;
 
+  // The meta bar (name, visibility, description, last push) belongs to
+  // the grid tile; banner and embedded captures stay picture-only.
+  const updated = repo.updatedAt ? new Date(repo.updatedAt) : null;
+  const updatedLabel =
+    updated && !Number.isNaN(updated.getTime())
+      ? updated.toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-GB', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        })
+      : null;
+
   const content = (
     <>
-      {(!loaded || failed) && (
-        <div
-          className={`repo-thumb__fallback repo-thumb__fallback--${fallbackIndex(repo.name)}`}
-          aria-hidden="true"
-        >
-          <span className="repo-thumb__initial">{repo.name.charAt(0).toUpperCase()}</span>
-        </div>
-      )}
-      {!failed && (
-        <div className="repo-thumb__frame" ref={frameRef}>
-          {inView && (frameSrc || repoDoc) && (
-            <iframe
-              key={frameSrc ?? 'repo-doc'}
-              className={`repo-thumb__iframe${loaded ? ' repo-thumb__iframe--loaded' : ''}`}
-              src={frameSrc ?? undefined}
-              srcDoc={frameSrc ? undefined : (repoDoc ?? undefined)}
-              // Static miniature: the site's own scripts never run — pure
-              // HTML+CSS paint, no third-party JS on our page, no per-frame
-              // work behind the glass surfaces. The tier-2 srcDoc is
-              // sanitized by the same buildSrcDoc pipeline as the editor
-              // preview, so it is equally script-free.
-              sandbox="allow-same-origin"
-              tabIndex={-1}
-              aria-hidden="true"
-              loading="lazy"
-              title={`${repo.name} preview`}
-              onLoad={handleLoad}
-              onError={handleError}
-            />
-          )}
-        </div>
-      )}
-      <span className="repo-thumb__label">
-        <span className="repo-thumb__name">{repo.name}</span>
-        {size === 'tile' && showVisibility && (
-          <span className="repo-thumb__chip">
-            {repo.isPrivate ? m.repositories.private : m.repositories.public}
-          </span>
+      <span className="repo-thumb__capture">
+        {(!loaded || failed) && (
+          <div
+            className={`repo-thumb__fallback repo-thumb__fallback--${fallbackIndex(repo.name)}`}
+            aria-hidden="true"
+          >
+            <span className="repo-thumb__initial">{repo.name.charAt(0).toUpperCase()}</span>
+          </div>
+        )}
+        {!failed && (
+          <div className="repo-thumb__frame" ref={frameRef}>
+            {inView && (frameSrc || repoDoc) && (
+              <iframe
+                key={frameSrc ?? 'repo-doc'}
+                className={`repo-thumb__iframe${loaded ? ' repo-thumb__iframe--loaded' : ''}`}
+                src={frameSrc ?? undefined}
+                srcDoc={frameSrc ? undefined : (repoDoc ?? undefined)}
+                // Static miniature: the site's own scripts never run — pure
+                // HTML+CSS paint, no third-party JS on our page. The tier-2
+                // srcDoc is sanitized by the same buildSrcDoc pipeline as the
+                // editor preview, so it is equally script-free.
+                sandbox="allow-same-origin"
+                tabIndex={-1}
+                aria-hidden="true"
+                loading="lazy"
+                title={`${repo.name} preview`}
+                onLoad={handleLoad}
+                onError={handleError}
+              />
+            )}
+          </div>
         )}
       </span>
+      {size === 'tile' && (
+        <span className="repo-thumb__meta">
+          <span className="repo-thumb__label">
+            <span className="repo-thumb__name">{repo.name}</span>
+            {showVisibility && (
+              <span className="repo-thumb__chip">
+                {repo.isPrivate ? <LockIcon /> : <GlobeIcon />}
+                {repo.isPrivate ? m.repositories.private : m.repositories.public}
+              </span>
+            )}
+            <span className="repo-thumb__open" aria-hidden="true">
+              <ArrowRightIcon />
+            </span>
+          </span>
+          {repo.description && <span className="repo-thumb__desc">{repo.description}</span>}
+          {updatedLabel && <span className="repo-thumb__updated">{updatedLabel}</span>}
+        </span>
+      )}
     </>
   );
 

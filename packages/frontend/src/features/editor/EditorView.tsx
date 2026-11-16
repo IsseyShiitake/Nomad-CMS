@@ -15,6 +15,7 @@ import { ApiImageManager } from '@/services/images';
 import { ErrorBanner } from '@/ui/components/ErrorBanner';
 import { Spinner } from '@/ui/components/Spinner';
 import { ConfirmDialog } from '@/ui/components/ConfirmDialog';
+import { UndoIcon } from '@/ui/components/icons';
 import { ElementEditor, type ElementEditorCallbacks } from './ElementEditor';
 import './EditorMood.css';
 
@@ -520,6 +521,7 @@ export function EditorView({
           onClick={handleUndo}
           disabled={!canUndo || isSaving}
         >
+          <UndoIcon />
           {m.editor.undo}
         </button>
         <button
@@ -641,6 +643,16 @@ export function EditorView({
                 {m.editor.zoomFit}
               </button>
             </div>
+          </div>
+          <div className="editor__chrome" aria-hidden="true">
+            <span className="editor__chrome-dots">
+              <i />
+              <i />
+              <i />
+            </span>
+            <span className="editor__chrome-url">
+              {owner}/{repo}/{path}
+            </span>
           </div>
           <div className="editor__preview-frame" ref={frameRef}>
             <div

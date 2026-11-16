@@ -8,6 +8,7 @@ import { fmt, useI18n } from '@/i18n';
 import { ErrorBanner } from '@/ui/components/ErrorBanner';
 import { Spinner } from '@/ui/components/Spinner';
 import { RepoTile } from '@/ui/components/RepoTile';
+import { FileIcon, ArrowRightIcon } from '@/ui/components/icons';
 import './ClientPages.css';
 
 /**
@@ -132,7 +133,11 @@ export function ClientPagesPage() {
               >
                 <Link to={`/client/editor/${encodeURIComponent(page.path)}`}>
                   <span className="page-list__item">
+                    <FileIcon />
                     <span className="page-list__path">{page.path}</span>
+                    <span className="page-list__go" aria-hidden="true">
+                      <ArrowRightIcon />
+                    </span>
                   </span>
                 </Link>
               </li>

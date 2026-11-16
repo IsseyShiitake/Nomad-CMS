@@ -1,20 +1,19 @@
-/* Editor mood — glass reskin layered over the shared editor classes.
-   Structure, controls, and layout stay in global.css; this sheet only
-   adds the floating preview dock, the violet vignette behind the
-   preview column, the element-row veils, and the page-load rise.
-   Tokens come from theme.css, so the dark theme swaps in free. */
+/* MERIDIAN editor mood: the workspace arrives as two settled panels;
+   the preview reads as a miniature browser window (chrome bar + frame).
+   No ambient glow — the site being edited is the color on screen. */
 
-/* --- page-load rise ----------------------------------------------------- */
-
-/* One rise on mount: the editor grid fades in and lifts into place. */
-.editor-mood__enter {
-  animation: editor-mood-enter calc(0.4s * var(--speed)) var(--ease-soft) both;
+.editor-mood__enter > .editor__panel {
+  animation: mood-in calc(var(--lm-t-base) * var(--speed)) var(--lm-ease-out) both;
 }
 
-@keyframes editor-mood-enter {
+.editor-mood__enter > .editor__preview {
+  animation: mood-in calc(var(--lm-t-base) * var(--speed)) var(--lm-ease-out) calc(60ms * var(--speed)) both;
+}
+
+@keyframes mood-in {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -22,104 +21,79 @@
   }
 }
 
-/* --- floating preview dock ----------------------------------------------- */
-
-/* The preview header (title, mode toggle, highlight, device, zoom)
-   reads as one glass pill pinned to the top of the preview column;
-   the frame scrolls blurred beneath it. The docked controls
-   (.scanner__toggle-btn, .editor__highlight, .editor__device,
-   .editor__zoom button) keep their global.css styles untouched —
-   the pill simply frames them. */
-.editor-mood__dock {
-  padding: 0.5rem 0.9rem;
-  background: var(--glass-bg);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg); /* square sides, rounded corners — like .editor__panel */
-  box-shadow: 0 8px 24px rgba(30, 20, 50, 0.12);
-  position: sticky;
-  top: 0;
-  z-index: 2;
-}
-
-:root[data-theme='dark'] .editor-mood__dock {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-}
-
-/* --- vignette behind the preview frame ------------------------------------ */
-
-/* The preview panel is its own stacking context, so the negative-z
-   backdrop paints above the panel's glass background and below every
-   child (dock, frame, legend) — a faint violet bloom behind the
-   browser card. */
-.editor-mood .editor__preview {
-  isolation: isolate;
-}
-
+/* The old ambient backdrop is retired; the element stays in the DOM. */
 .editor-mood__backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background: radial-gradient(closest-side, var(--lm-iris-tint, rgba(91, 75, 214, 0.1)), transparent 70%);
-  pointer-events: none;
+  display: none;
 }
 
-:root[data-theme='dark'] .editor-mood__backdrop {
-  background: radial-gradient(closest-side, rgba(179, 164, 232, 0.1), transparent 70%);
+/* Preview header: a dock strip above the browser window. */
+.editor-mood__dock {
+  padding: 0;
 }
 
-/* The frame keeps its global paper-card look; the mood adds one step
-   of lift so it floats above the vignette. */
-.editor-mood .editor__preview-frame {
-  box-shadow: var(--shadow-md);
+/* --- Browser chrome ------------------------------------------------------ */
+
+.editor__chrome {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  background: var(--lm-porcelain-sunk);
+  border: 1px solid var(--lm-edge);
+  border-bottom: none;
+  border-radius: var(--lm-r-md) var(--lm-r-md) 0 0;
 }
 
-:root[data-theme='dark'] .editor-mood .editor__preview-frame {
-  box-shadow: 0 8px 28px rgba(5, 4, 14, 0.6);
+.editor__chrome-dots {
+  display: inline-flex;
+  gap: 5px;
 }
 
-/* --- element rows ---------------------------------------------------------- */
-
-/* Roomier rows with a smooth hover veil; the active row keeps its
-   stronger accent wash from global.css. */
-.editor-mood__row {
-  margin-block: 0.5rem;
-  transition:
-    background calc(0.25s * var(--speed)) var(--ease-soft),
-    border-color calc(0.25s * var(--speed)) var(--ease-soft),
-    box-shadow calc(0.25s * var(--speed)) var(--ease-soft),
-    transform calc(0.25s * var(--speed)) var(--ease-soft);
+.editor__chrome-dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--lm-edge-strong);
 }
 
-.editor-mood__row:not(.editor-element--active):hover {
-  background: var(--glass-bg-strong);
+.editor__chrome-dots i:first-child {
+  background: var(--danger-text);
+  opacity: 0.7;
 }
 
-/* Glass focus ring on the row's fields — a softer halo than the global
-   focus ring, with a faint shadow for depth. */
-.editor-mood__row .editor-element__textarea:focus-visible,
-.editor-mood__row .editor-element__input:focus-visible {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--lm-iris-ring, rgba(91, 75, 214, 0.34)), var(--shadow-sm);
+.editor__chrome-dots i:nth-child(2) {
+  background: var(--warn-text);
+  opacity: 0.7;
 }
 
-:root[data-theme='dark'] .editor-mood__row .editor-element__textarea:focus-visible,
-:root[data-theme='dark'] .editor-mood__row .editor-element__input:focus-visible {
-  box-shadow: 0 0 0 3px var(--lm-iris-ring, rgba(169, 155, 255, 0.42)), var(--shadow-sm);
+.editor__chrome-dots i:last-child {
+  background: var(--lm-ok);
+  opacity: 0.7;
 }
 
-/* --- reduced motion --------------------------------------------------------- */
+.editor__chrome-url {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 10px;
+  background: var(--lm-porcelain-sunk);
+  border: 1px solid var(--lm-edge);
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--lm-ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The frame sits flush under the chrome. */
+.editor__preview .editor__preview-frame {
+  border-radius: 0 0 var(--lm-r-md) var(--lm-r-md);
+}
 
 @media (prefers-reduced-motion: reduce) {
-  /* The page appears in place — no rise. */
-  .editor-mood__enter {
+  .editor-mood__enter > .editor__panel,
+  .editor-mood__enter > .editor__preview {
     animation: none;
-  }
-
-  /* Hover veils and focus rings switch instantly — no movement. */
-  .editor-mood__row {
-    transition: none;
   }
 }

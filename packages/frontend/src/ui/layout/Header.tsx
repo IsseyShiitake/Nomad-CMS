@@ -5,9 +5,14 @@ import { useAuth } from '@/services/auth';
 import { useI18n } from '@/i18n';
 import { useTheme } from '@/services/theme';
 import { HelpCenter } from '@/features/help/HelpCenter';
+import { CompassMark } from '@/ui/components/icons';
 import './Header.css';
 
-/** Application header: menu toggle, app name, language toggle, help, user actions. */
+/**
+ * Mobile top bar (hidden on desktop, where the sidebar carries the
+ * chrome): menu toggle, brand, and the essentials — theme, help, and
+ * the session action. Language lives in the drawer on small screens.
+ */
 export function Header({
   sidebarOpen,
   onToggleSidebar,
@@ -15,7 +20,7 @@ export function Header({
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
 }) {
-  const { m, locale, setLocale } = useI18n();
+  const { m } = useI18n();
   const { theme, toggleTheme } = useTheme();
   const { user, isAuthenticated, isLoading, login, logout } = useAuth();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -35,28 +40,14 @@ export function Header({
           <span className="header__menu-line" />
           <span className="header__menu-line" />
         </button>
-        <div className="header__title">{config.appName || m.app.name}</div>
+        <div className="header__title">
+          <span className="sidebar__brand-mark" aria-hidden="true">
+            <CompassMark />
+          </span>
+          {config.appName || m.app.name}
+        </div>
       </div>
       <div className="header__user">
-        <div className="lang-toggle" role="group" aria-label={m.header.languageLabel}>
-          <button
-            type="button"
-            className={`lang-toggle__btn${locale === 'en' ? ' lang-toggle__btn--active' : ''}`}
-            aria-pressed={locale === 'en'}
-            onClick={() => setLocale('en')}
-          >
-            EN
-          </button>
-          <button
-            type="button"
-            className={`lang-toggle__btn${locale === 'fr' ? ' lang-toggle__btn--active' : ''}`}
-            aria-pressed={locale === 'fr'}
-            onClick={() => setLocale('fr')}
-          >
-            FR
-          </button>
-        </div>
-
         <button
           type="button"
           className="theme-toggle"

@@ -1,42 +1,50 @@
-/* RepoTile — miniature capture of a repository's GitHub Pages site.
-   Sizes: --tile (grid hero), --banner (compact workspace header),
-   --card (small thumbnail). The iframe is scaled up to cover the
-   tile like a browser screenshot; the fallback is a pastel panel
-   with the repo initial. */
+/* MERIDIAN repository tile: a miniature capture over a meta bar.
+   The capture mechanics are unchanged — the site renders at a virtual
+   1200px desktop viewport and is scaled to cover the box by
+   --thumb-scale / --thumb-viewport-height (set by the ResizeObserver
+   in RepoTile.tsx). */
 
 .repo-thumb {
   position: relative;
-  display: block;
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  min-height: 120px;
-  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.55));
-  border-radius: var(--radius-lg, 18px);
+  padding: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--lm-r-md);
+  background: var(--lm-porcelain);
+  box-shadow: inset 0 1px 0 var(--lm-rim), var(--lm-shadow-1);
   overflow: hidden;
-  /* clip-path clips in the paint phase, so it survives the hover lift's
-     compositor promotion — on some GPU setups Chromium drops the ancestor
-     overflow+radius clip for a cross-process iframe (square corners bleed
-     outside the rounded tile); paint-phase clipping is immune. */
-  clip-path: inset(0 round var(--radius-lg, 18px));
-  background: var(--glass-bg, rgba(255, 255, 255, 0.55));
-  box-shadow: var(--shadow-md, 0 4px 12px rgba(16, 24, 40, 0.08));
-  transition: transform calc(0.45s * var(--speed)) var(--ease-soft), box-shadow calc(0.45s * var(--speed)) var(--ease-soft);
-}
-
-.repo-thumb button,
-button.repo-thumb {
-  cursor: pointer;
   text-align: left;
   font: inherit;
   color: inherit;
+  cursor: pointer;
+  transition: border-color var(--lm-t-fast) var(--lm-ease-out), box-shadow var(--lm-t-fast) var(--lm-ease-out),
+    transform var(--lm-t-fast) var(--lm-ease-out);
 }
 
-/* Interactive tiles lift on hover. */
-.repo-thumb:focus-visible {
+button.repo-thumb:hover {
+  border-color: var(--lm-edge-strong);
+  box-shadow: var(--lm-shadow-2);
+  transform: translateY(-2px);
+}
+
+button.repo-thumb:focus-visible {
   outline: none;
-  box-shadow: var(--focus-ring, 0 0 0 3px rgba(109, 90, 158, 0.25));
+  box-shadow: var(--focus-ring);
 }
 
-/* --- capture frame ------------------------------------------------- */
+/* --- Capture ---------------------------------------------------------- */
+
+.repo-thumb__capture {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--lm-porcelain-sunk);
+  border-bottom: 1px solid var(--lm-edge);
+}
 
 .repo-thumb__frame {
   position: absolute;
@@ -46,18 +54,12 @@ button.repo-thumb {
 }
 
 .repo-thumb__iframe {
-  /* Scaled to cover the tile: the site renders at the virtual desktop
-     viewport (1200px wide; height set from the tile's own box by the
-     ResizeObserver in RepoTile) and is shrunk into the miniature like a
-     screenshot, header-aligned. --thumb-scale / --thumb-viewport-height
-     are set inline per tile; the fallbacks keep pre-observer renders
-     sane (jsdom, no ResizeObserver). */
   width: 1200px;
   height: var(--thumb-viewport-height, 800px);
   border: 0;
   background: #fff;
   opacity: 0;
-  transition: opacity calc(0.6s * var(--speed)) var(--ease-soft);
+  transition: opacity calc(0.5s * var(--speed)) var(--lm-ease-out);
   position: absolute;
   top: 0;
   left: 0;
@@ -69,7 +71,7 @@ button.repo-thumb {
   opacity: 1;
 }
 
-/* --- fallback monogram --------------------------------------------- */
+/* --- Fallback monogram: six legend hues, deterministic per repo -------- */
 
 .repo-thumb__fallback {
   position: absolute;
@@ -77,150 +79,174 @@ button.repo-thumb {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: opacity calc(0.5s * var(--speed)) var(--ease-soft);
-}
-
-/* Fallback panels — hue deterministic per repo name hash. Lumen keeps them
-   inside the field's own value ramp and differentiates repos with a faint
-   accent wash (iris / mint / amber at ~10%) rather than with six unrelated
-   pastels, so a grid of unloaded tiles still reads as one system. The ramp
-   tokens flip in dark theme, so these do too. */
-.repo-thumb__fallback--0 {
-  background:
-    linear-gradient(135deg, rgba(91, 75, 214, 0.1) 0%, rgba(91, 75, 214, 0) 55%),
-    linear-gradient(135deg, var(--lm-field-hi) 0%, var(--lm-field-lo) 100%);
-}
-.repo-thumb__fallback--1 {
-  background:
-    linear-gradient(135deg, rgba(111, 157, 132, 0.12) 0%, rgba(111, 157, 132, 0) 55%),
-    linear-gradient(135deg, var(--lm-field-hi) 0%, var(--lm-field-lo) 100%);
-}
-.repo-thumb__fallback--2 {
-  background:
-    linear-gradient(45deg, rgba(91, 75, 214, 0.1) 0%, rgba(91, 75, 214, 0) 55%),
-    linear-gradient(135deg, var(--lm-field-hi) 0%, var(--lm-field-lo) 100%);
-}
-.repo-thumb__fallback--3 {
-  background:
-    linear-gradient(135deg, rgba(217, 160, 91, 0.14) 0%, rgba(217, 160, 91, 0) 55%),
-    linear-gradient(135deg, var(--lm-field-hi) 0%, var(--lm-field-lo) 100%);
-}
-.repo-thumb__fallback--4 {
-  background: linear-gradient(45deg, var(--lm-field-hi) 0%, var(--lm-field-lo) 100%);
-}
-.repo-thumb__fallback--5 {
-  background:
-    linear-gradient(45deg, rgba(111, 157, 132, 0.12) 0%, rgba(111, 157, 132, 0) 55%),
-    linear-gradient(135deg, var(--lm-field-hi) 0%, var(--lm-field-lo) 100%);
 }
 
 .repo-thumb__initial {
-  font-family: var(--font-display, Georgia, serif);
-  font-size: clamp(2.4rem, 8vw, 4rem);
-  /* Full-opacity ink at reduced alpha, not a mid-grey: the monogram sits
-     in the light the same way type does everywhere else in Lumen. */
-  color: var(--lm-ink, #241a2e);
-  opacity: 0.4;
-  text-shadow: 0 2px 12px rgba(255, 255, 255, 0.5);
+  font-family: var(--lm-font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 56px;
+  line-height: 1;
+  letter-spacing: -0.02em;
 }
 
-:root[data-theme='dark'] .repo-thumb__initial {
-  color: var(--lm-ink, #f3eefa);
-  opacity: 0.42;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+.repo-thumb__fallback--0 {
+  background: var(--lm-iris-tint);
+  color: var(--lm-iris);
 }
 
-/* --- name strip ------------------------------------------------------ */
+.repo-thumb__fallback--1 {
+  background: var(--lm-iris-tint);
+  color: var(--lm-iris);
+}
+
+.repo-thumb__fallback--2 {
+  background: var(--ok-chip-bg);
+  color: var(--lm-ok);
+}
+
+.repo-thumb__fallback--3 {
+  background: var(--warn-soft-bg);
+  color: var(--warn-text);
+}
+
+.repo-thumb__fallback--4 {
+  background: var(--badge-h2-bg);
+  color: var(--badge-h2-text);
+}
+
+.repo-thumb__fallback--5 {
+  background: var(--lm-porcelain-sunk);
+  color: var(--lm-ink-muted);
+}
+
+/* --- Meta bar ------------------------------------------------------------ */
+
+.repo-thumb__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+}
 
 .repo-thumb__label {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.45rem 0.9rem;
-  background: var(--glass-bg-strong, rgba(255, 255, 255, 0.66));
-  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.55));
-  /* 10px on a strip inset 12px from a 22px-cornered tile: the corners
-     stay concentric with the box the label floats in. */
-  border-radius: var(--radius, 10px);
-  /* A soft lift: the pill must stay readable over light captures (a
-     white 404 page) as well as dark ones — border alone isn't enough. */
-  box-shadow: 0 3px 14px rgba(16, 24, 40, 0.28);
-  backdrop-filter: blur(10px) saturate(1.25);
-  -webkit-backdrop-filter: blur(10px) saturate(1.25);
+  gap: 8px;
+  min-width: 0;
 }
 
 .repo-thumb__name {
-  font-family: var(--font-display);
-  font-style: italic; /* house rule: display type is italic serif */
-  font-size: 1rem;
-  color: var(--color-text);
+  font-weight: 600;
+  font-size: var(--text-base);
+  color: var(--lm-ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .repo-thumb__chip {
-  flex: none;
-  font-size: var(--text-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border: 1px solid var(--lm-edge-strong);
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  letter-spacing: var(--kicker-tracking);
-  color: var(--color-text-muted);
+  color: var(--lm-ink-muted);
+}
+
+.repo-thumb__chip svg {
+  width: 10px;
+  height: 10px;
+}
+
+.repo-thumb__open {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--lm-iris);
   opacity: 0;
-  transition: opacity calc(0.3s * var(--speed)) var(--ease-soft);
+  transform: translateX(-4px);
+  transition: opacity var(--lm-t-fast) var(--lm-ease-out), transform var(--lm-t-fast) var(--lm-ease-out);
 }
 
-/* Chip (private/public) reveals on hover — desktop affordance. */
-.repo-thumb:hover .repo-thumb__chip,
-.repo-thumb:focus-visible .repo-thumb__chip {
+.repo-thumb__open svg {
+  width: 15px;
+  height: 15px;
+}
+
+button.repo-thumb:hover .repo-thumb__open,
+button.repo-thumb:focus-visible .repo-thumb__open {
   opacity: 1;
+  transform: none;
 }
 
-/* --- sizes ----------------------------------------------------------- */
-
-.repo-thumb--tile {
-  min-height: 0;
-  height: 100%;
+.repo-thumb__desc {
+  font-size: var(--text-xs);
+  color: var(--lm-ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+.repo-thumb__updated {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--lm-ink-faint);
+}
+
+/* --- Banner size: picture strip only --------------------------------------- */
 
 .repo-thumb--banner {
-  min-height: 96px;
-  flex: none;
+  flex-direction: row;
+  align-items: stretch;
+  border-radius: var(--lm-r-sm);
 }
 
-.repo-thumb--card {
-  min-height: 64px;
+.repo-thumb--banner .repo-thumb__capture {
+  aspect-ratio: auto;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 84px;
+  border-bottom: none;
+  border-right: 1px solid var(--lm-edge);
 }
 
-.repo-thumb--card .repo-thumb__label {
-  display: none;
+/* --- Shimmer placeholders (repositories grid loading) ------------------------ */
+
+.repo-thumb--shimmer {
+  aspect-ratio: 16 / 12.4;
+  border: 1px solid var(--lm-edge);
+  border-radius: var(--lm-r-md);
+  background: linear-gradient(100deg, var(--lm-porcelain) 40%, var(--lm-porcelain-sunk) 50%, var(--lm-porcelain) 60%);
+  background-size: 200% 100%;
+  animation: repo-shimmer 1.4s var(--lm-ease-inout) infinite;
+  list-style: none;
 }
 
-/* Only the tile size is a hover-lifting interactive miniature. */
-.repo-thumb--tile.repo-thumb--tile:hover,
-.repo-thumb--tile:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-lg, 0 12px 32px rgba(16, 24, 40, 0.18));
+@keyframes repo-shimmer {
+  to {
+    background-position: -200% 0;
+  }
 }
-
-:root[data-theme='dark'] .repo-thumb {
-  border-color: var(--glass-border, rgba(236, 231, 245, 0.12));
-}
-
-/* --- reduced motion -------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
   .repo-thumb,
   .repo-thumb__iframe,
-  .repo-thumb__chip {
+  .repo-thumb__open {
     transition: none;
   }
 
-  .repo-thumb--tile:hover {
+  button.repo-thumb:hover {
     transform: none;
+  }
+
+  .repo-thumb--shimmer {
+    animation: none;
   }
 }

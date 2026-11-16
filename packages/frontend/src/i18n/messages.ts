@@ -37,6 +37,7 @@ export interface Messages {
   };
   app: { name: string };
   nav: { repositories: string; settings: string; help: string; myPages: string; mainAria: string; openMenu: string; closeMenu: string };
+  shell: { workspace: string; operator: string; clientAccess: string };
   header: { signInGithub: string; signOut: string; languageLabel: string; themeLabel: string };
   auth: {
     signInToEditTitle: string;
@@ -60,7 +61,9 @@ export interface Messages {
     clientTitle: string;
     developerTitle: string;
     clientTagline: string;
+    clientPoints: string[];
     developerTagline: string;
+    developerPoints: string[];
     developerIntro: string;
     platformLoginsLabel: string;
     continueWith: string;
@@ -69,6 +72,7 @@ export interface Messages {
   };
   repositories: {
     title: string;
+    count: string;
     searchPlaceholder: string;
     searchAria: string;
     filterAria: string;
@@ -313,6 +317,11 @@ export const en: Messages = {
     openMenu: 'Open menu',
     closeMenu: 'Close menu',
   },
+  shell: {
+    workspace: 'Workspace',
+    operator: 'Operator',
+    clientAccess: 'Client access',
+  },
   header: {
     signInGithub: 'Sign in with GitHub',
     signOut: 'Sign out',
@@ -342,6 +351,16 @@ export const en: Messages = {
     developerTitle: 'Developer',
     clientTagline: 'Edit your website content',
     developerTagline: 'Manage your repositories & client access',
+    clientPoints: [
+      'Edit the text and images on your pages',
+      'See every change in a live preview',
+      'Saves can be held for review before going live',
+    ],
+    developerPoints: [
+      'Browse and edit every repository',
+      'Manage client access and approvals',
+      'Publish to Cloudflare Pages or Vercel',
+    ],
     developerIntro: 'Sign in with your GitHub account to manage your repositories.',
     platformLoginsLabel: 'Or connect a hosting platform',
     continueWith: 'Continue with {name}',
@@ -350,6 +369,7 @@ export const en: Messages = {
   },
   repositories: {
     title: 'Repositories',
+    count: '{count} repositories',
     searchPlaceholder: 'Search repositories…',
     searchAria: 'Search repositories',
     filterAria: 'Filter repositories',
@@ -656,6 +676,11 @@ export const fr: Messages = {
     openMenu: 'Ouvrir le menu',
     closeMenu: 'Fermer le menu',
   },
+  shell: {
+    workspace: 'Espace de travail',
+    operator: 'Opérateur',
+    clientAccess: 'Accès client',
+  },
   header: {
     signInGithub: 'Se connecter avec GitHub',
     signOut: 'Se déconnecter',
@@ -685,6 +710,16 @@ export const fr: Messages = {
     developerTitle: 'Développeur',
     clientTagline: 'Modifiez le contenu de votre site',
     developerTagline: 'Gérez vos dépôts et les accès clients',
+    clientPoints: [
+      'Modifiez le texte et les images de vos pages',
+      'Visualisez chaque changement en aperçu direct',
+      'Les envois peuvent être relus avant la mise en ligne',
+    ],
+    developerPoints: [
+      'Parcourez et modifiez tous vos dépôts',
+      'Gérez les accès clients et les validations',
+      'Publiez sur Cloudflare Pages ou Vercel',
+    ],
     developerIntro: 'Connectez-vous avec votre compte GitHub pour gérer vos dépôts.',
     platformLoginsLabel: 'Ou connecter une plateforme d’hébergement',
     continueWith: 'Continuer avec {name}',
@@ -693,6 +728,7 @@ export const fr: Messages = {
   },
   repositories: {
     title: 'Dépôts',
+    count: '{count} dépôts',
     searchPlaceholder: 'Rechercher un dépôt…',
     searchAria: 'Rechercher un dépôt',
     filterAria: 'Filtrer les dépôts',

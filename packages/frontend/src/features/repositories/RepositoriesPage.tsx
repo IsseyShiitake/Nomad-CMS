@@ -3,10 +3,11 @@ import { Link, useNavigate } from 'react-router';
 import type { Repository } from '@cms/shared';
 import { listDeployProjects, listRepositories } from '@/api';
 import { useAuth } from '@/services/auth';
-import { useI18n } from '@/i18n';
+import { fmt, useI18n } from '@/i18n';
 import { ErrorBanner } from '@/ui/components/ErrorBanner';
 import { Spinner } from '@/ui/components/Spinner';
 import { RepoTile } from '@/ui/components/RepoTile';
+import { SearchIcon, RefreshIcon } from '@/ui/components/icons';
 import './Repositories.css';
 
 /** Repository visibility filter options. */
@@ -124,23 +125,42 @@ export function RepositoriesPage() {
 
   return (
     <section className="page repositories">
-      <div className="repositories__guide">
-        <p className="repositories__kicker">{m.repositories.title}</p>
-        <h2 className="repositories__title">{m.repositories.selectGuide}</h2>
+      <div className="repositories__head">
+        <div className="repositories__guide">
+          <h2 className="repositories__title">
+            {m.repositories.title}
+            <span className="repositories__count">
+              {fmt(m.repositories.count, { count: String(visibleRepositories.length) })}
+            </span>
+          </h2>
+          <p className="repositories__subtitle">{m.repositories.selectGuide}</p>
+        </div>
+        <button
+          type="button"
+          className="btn repositories__refresh"
+          onClick={() => void load()}
+          disabled={isLoading}
+        >
+          <RefreshIcon />
+          {m.common.refresh}
+        </button>
       </div>
 
       {error && <ErrorBanner onDismiss={() => setError(null)}>{error}</ErrorBanner>}
 
       <div className="repositories-toolbar">
         <div className="repo-toolbar">
-          <input
-            type="search"
-            className="repo-toolbar__search"
-            placeholder={m.repositories.searchPlaceholder}
-            aria-label={m.repositories.searchAria}
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
+          <div className="repo-toolbar__search-wrap">
+            <SearchIcon />
+            <input
+              type="search"
+              className="repo-toolbar__search"
+              placeholder={m.repositories.searchPlaceholder}
+              aria-label={m.repositories.searchAria}
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+          </div>
           <div className="repo-toolbar__filters" role="group" aria-label={m.repositories.filterAria}>
             {(['all', 'public', 'private'] as const).map((option) => (
               <button
@@ -153,14 +173,6 @@ export function RepositoriesPage() {
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            className="btn repositories-toolbar__refresh"
-            onClick={() => void load()}
-            disabled={isLoading}
-          >
-            {m.common.refresh}
-          </button>
         </div>
       </div>
 

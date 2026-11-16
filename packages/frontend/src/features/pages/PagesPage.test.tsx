@@ -117,7 +117,7 @@ describe('PagesPage', () => {
     const contents = within(contentsCard as HTMLElement);
     expect(contents.getByText('style.css')).not.toBeNull();
     expect(contents.getByText('logo.png')).not.toBeNull();
-    expect(contents.getByRole('button', { name: '📁 assets' })).not.toBeNull();
+    expect(contents.getByRole('button', { name: 'assets' })).not.toBeNull();
     // HTML files (any casing) live in the Website Pages box, not here.
     expect(contents.queryByText('index.html')).toBeNull();
     expect(contents.queryByText('about.HTML')).toBeNull();

@@ -1,91 +1,102 @@
-/*
- * Settings page: per-client language segmented controls and narrow-screen
- * table scrolling. Colocated with SettingsPage.tsx.
- */
+/* MERIDIAN settings: numbered sections like a field manual, clean
+   tables, real switches. Shared table/form/status styles live in
+   styles/global.css; this file carries the page rhythm and the
+   hosting-platform card. */
 
-/* Horizontal scroll wrapper so the Language column fits on narrow screens. */
-.settings-table-wrap {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+.page--centered {
+  counter-reset: section;
 }
 
-/* Segmented FR/EN pill group (create form + table cells). */
-.settings-language {
-  display: inline-flex;
-  border: 1px solid var(--glass-border);
-  border-radius: 999px;
-  overflow: hidden;
-  background: var(--glass-bg);
+.page--centered > h3 {
+  counter-increment: section;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
 }
 
-.settings-language__btn {
-  /* Vertical padding matches the text inputs (0.5rem) so the create-form
-     row shares one baseline: bottom-aligned fields with equal control
-     heights put every label at the same top. */
-  padding: 0.5rem 0.75rem;
-  line-height: 1.5; /* same content box as the text inputs → equal heights */
-  border: none;
-  background: transparent;
-  color: var(--color-text-muted);
+.page--centered > h3::before {
+  content: counter(section, decimal-leading-zero);
+  font-family: var(--font-mono);
   font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: background calc(0.15s * var(--speed)) var(--ease-soft), color calc(0.15s * var(--speed));
+  font-weight: 600;
+  color: var(--lm-iris);
 }
 
-.settings-language__btn + .settings-language__btn {
-  border-left: 1px solid var(--glass-border);
+.page--centered > .page-status {
+  margin: 0 0 14px;
 }
 
-.settings-language__btn:hover {
-  background: var(--color-accent-soft);
-  color: var(--color-text);
+/* --- Hosting platforms card ------------------------------------------- */
+
+.hosting-card .hosting-list {
+  margin-top: 6px;
 }
 
-.settings-language__btn--active {
-  background: var(--color-primary);
-  color: var(--color-on-primary);
+.hosting-row {
+  padding: 14px 0;
+  border-top: 1px solid var(--lm-edge);
 }
 
-.settings-language__btn:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
+.hosting-row:first-child {
+  border-top: none;
+  padding-top: 4px;
 }
 
-/* Compact select variant for table cells (same pill language, smaller). */
-.settings-language__select {
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--glass-border);
-  border-radius: 999px;
-  background: var(--glass-bg);
-  color: var(--color-text);
-  font-size: var(--text-xs);
+.hosting-row__platform {
+  font-family: var(--lm-font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: var(--text-base);
+  letter-spacing: 0.02em;
+}
+
+.hosting-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: var(--r-pill);
+  background: var(--ok-chip-bg);
+  color: var(--lm-ok);
+  font-family: var(--font-mono);
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  cursor: pointer;
-  transition: border-color calc(0.15s * var(--speed)) var(--ease-soft), background calc(0.15s * var(--speed)) var(--ease-soft);
 }
 
-.settings-language__select:hover {
-  background: var(--glass-bg-strong);
+.hosting-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-.settings-language__select:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
+.hosting-badge--invalid {
+  background: var(--danger-soft-bg);
+  color: var(--danger-text);
 }
 
-/* Placeholder "·" option rendered muted when no language is set. */
-.settings-language__option--auto {
-  color: var(--color-text-muted);
+.hosting-input--token {
+  min-width: 220px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .settings-language__btn,
-  .settings-language__select {
-    transition: none;
+/* --- Credentials modal rows --------------------------------------------- */
+
+.credentials {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 768px) {
+  .credentials__row {
+    flex-wrap: wrap;
+  }
+
+  .credentials__label {
+    flex-basis: 100%;
   }
 }

@@ -4,11 +4,12 @@ import type { PageSummary, Repository, RepositoryFile } from '@cms/shared';
 import { listContents, listPages } from '@/api';
 import { PublishPanel } from '@/features/publish/PublishPanel';
 import { useAuth } from '@/services/auth';
-import { fmt, useI18n } from '@/i18n';
+import { useI18n } from '@/i18n';
 import { Card } from '@/ui/components/Card';
 import { ErrorBanner } from '@/ui/components/ErrorBanner';
 import { Spinner } from '@/ui/components/Spinner';
 import { RepoTile } from '@/ui/components/RepoTile';
+import { FileIcon, FolderIcon, ArrowRightIcon } from '@/ui/components/icons';
 import './Pages.css';
 
 /** Navigation state for this route. */
@@ -20,6 +21,13 @@ type NavState = {
 /** HTML files are listed in the Website Pages box, not the contents card. */
 function isHtmlFileName(name: string): boolean {
   return /\.html?$/i.test(name);
+}
+
+/** Human-readable file size for the contents list (mono, right-aligned). */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**
@@ -145,7 +153,7 @@ export function PagesPage() {
       <div className="pages-banner">
         <div className="pages-banner__text">
           <p className="pages-banner__kicker">
-            {fmt(m.pages.title, { repo: `${owner}/${repo}` })}
+            {owner}/{repo}
           </p>
           <h2 className="pages-banner__guide">{m.pages.selectGuide}</h2>
         </div>
@@ -167,7 +175,14 @@ export function PagesPage() {
 
           <div className="pages-webpages__content">
             <div className="pages-drawer__head">
-              <h3 className="pages-drawer__sub">{m.pages.htmlFiles}</h3>
+              <h3 className="pages-drawer__sub">
+                {m.pages.htmlFiles}
+                {htmlFiles.length > 0 && (
+                  <span className="pages-drawer__count" aria-hidden="true">
+                    {htmlFiles.length}
+                  </span>
+                )}
+              </h3>
               {htmlFiles.length > 0 && (
                 <div className="pages-drawer__search">
                   <input
@@ -197,7 +212,11 @@ export function PagesPage() {
                   <li key={page.path} style={{ '--i': index } as CSSProperties}>
                     <Link to={`/repositories/${owner}/${repo}/editor/${encodeURIComponent(page.path)}`}>
                       <span className="page-list__item">
+                        <FileIcon />
                         <span className="page-list__path">{page.path}</span>
+                        <span className="page-list__go" aria-hidden="true">
+                          <ArrowRightIcon />
+                        </span>
                       </span>
                     </Link>
                   </li>
@@ -228,7 +247,8 @@ export function PagesPage() {
                     {directories.map((dir) => (
                       <li key={dir.path}>
                         <button type="button" className="file-nav__dir" onClick={() => enterDirectory(dir.path)}>
-                          📁 {dir.name}
+                          <FolderIcon />
+                          {dir.name}
                         </button>
                       </li>
                     ))}
@@ -241,7 +261,15 @@ export function PagesPage() {
                   <h4>{m.pages.files}</h4>
                   <ul className="page-list">
                     {showFiles.map((file) => (
-                      <li key={file.path}>{file.name}</li>
+                      <li key={file.path}>
+                        <span className="page-list__item page-list__item--static">
+                          <FileIcon />
+                          <span className="page-list__path">{file.name}</span>
+                          {file.size > 0 && (
+                            <span className="page-list__size">{formatBytes(file.size)}</span>
+                          )}
+                        </span>
+                      </li>
                     ))}
                   </ul>
                 </>
