@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../env';
 import { sessionCookie } from '../core/http';
-import { ClientStore, SessionManager, generateSalt, hashPassword } from '../services/auth';
+import { ClientStore, GitHubGrantStore, SessionManager, generateSalt, hashPassword } from '../services/auth';
 import {
   AUTHORIZE_RATE_LIMIT,
   AUTHORIZE_RATE_WINDOW_SECONDS,
@@ -609,4 +609,163 @@ describe('GET /session revocation check (audit 2026-11-15 follow-up)', () => {
     const store = new ClientStore(kv, KEY);
     await store.update('acme-corp', patch);
   }
+});
+
+describe('exchange grant + re-anchor', () => {
+  let kv: KVNamespace;
+  let storeMap: Map<string, { value: string }>;
+  let ctx: RouteContext;
+
+  beforeEach(() => {
+    ({ kv, store: storeMap } = mockKv());
+    ctx = { env: makeEnv(kv) };
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  function jsonResponse(payload: unknown): Response {
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  /** Runs /exchange with the given OAuth payload and returns the response. */
+  async function exchange(exchangePayload: Record<string, unknown>): Promise<Response> {
+    await kv.put('oauth-state:stx', '1');
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(exchangePayload))
+        .mockResolvedValueOnce(
+          jsonResponse({ id: 1, login: 'octocat', name: null, avatar_url: null }),
+        ),
+    );
+    return authRoutes.handle(
+      '/exchange',
+      new Request('http://localhost/api/auth/exchange', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'good-code', state: 'stx' }),
+      }),
+      ctx,
+    );
+  }
+
+  function sessionTokenFrom(response: Response): string {
+    const cookie = response.headers.get('Set-Cookie') ?? '';
+    const match = /cms_session=([0-9a-f]{64})/.exec(cookie);
+    if (!match) throw new Error(`no session cookie in: ${cookie}`);
+    return match[1]!;
+  }
+
+  it('exchange stores the grant and the session expiry', async () => {
+    const before = Date.now();
+    const response = await exchange({
+      access_token: 'gho_dummy-a',
+      token_type: 'bearer',
+      scope: 'repo',
+      expires_in: 28800,
+      refresh_token: 'ghr_dummy-r',
+      refresh_token_expires_in: 15897600,
+    });
+    const after = Date.now();
+    expect(response.status).toBe(200);
+    const raw = await kv.get('github-grant:octocat');
+    expect(raw).not.toBeNull();
+    expect(raw).not.toContain('gho_dummy-a');
+    expect(raw).not.toContain('ghr_dummy-r');
+    const session = await new SessionManager(kv, KEY).getSession(sessionTokenFrom(response));
+    expect(session?.githubTokenExpiresAt).toBeGreaterThanOrEqual(before + 28800_000);
+    expect(session?.githubTokenExpiresAt).toBeLessThanOrEqual(after + 28800_000);
+  });
+
+  it('exchange re-anchors every access created by the admin, merge-safe', async () => {
+    const store = new ClientStore(kv, KEY);
+    const salt = generateSalt();
+    const base = {
+      repo: { owner: 'octocat', repo: 'site' },
+      createdBy: 'octocat',
+      passwordHash: await hashPassword('client-password-1', salt),
+      salt,
+      githubToken: await store.encryptGitHubToken('ghp_admin_old'),
+      createdAt: '2026-11-16T00:00:00Z',
+      lastUsedAt: null as string | null,
+      failedAttempts: 0,
+      lockedUntil: null as string | null,
+    };
+    await store.create({ clientId: 'keep-approval', label: 'Keep', ...base, requireApproval: true, revoked: false, language: 'fr' as const });
+    await store.create({ clientId: 'revoked-one', label: 'Rev', ...base, requireApproval: false, revoked: true });
+    await store.create({ clientId: 'other-owner', label: 'Other', ...base, createdBy: 'someone-else', requireApproval: false, revoked: false });
+    const keepBefore = JSON.parse(storeMap.get('client:keep-approval')!.value) as Record<string, unknown>;
+    const revokedBefore = JSON.parse(storeMap.get('client:revoked-one')!.value) as Record<string, unknown>;
+    const otherBeforeRaw = storeMap.get('client:other-owner')!.value;
+
+    const response = await exchange({
+      access_token: 'gho_dummy-new',
+      token_type: 'bearer',
+      scope: 'repo',
+      expires_in: 28800,
+      refresh_token: 'ghr_dummy-r',
+      refresh_token_expires_in: 15897600,
+    });
+    expect(response.status).toBe(200);
+
+    const keepAfter = JSON.parse(storeMap.get('client:keep-approval')!.value) as Record<string, unknown>;
+    const revokedAfter = JSON.parse(storeMap.get('client:revoked-one')!.value) as Record<string, unknown>;
+    for (const before of [keepBefore, revokedBefore]) {
+      const after = before === keepBefore ? keepAfter : revokedAfter;
+      expect(after.githubToken).not.toBe(before.githubToken);
+      expect(after.githubTokenExpiresAt).toBeGreaterThan(Date.now() + 28700_000);
+      for (const field of [
+        'passwordHash',
+        'salt',
+        'requireApproval',
+        'revoked',
+        'failedAttempts',
+        'lockedUntil',
+        'label',
+        'repo',
+        'createdBy',
+        'createdAt',
+        'language',
+        'lastUsedAt',
+      ] as const) {
+        if (field === 'language' && before.language === undefined && after.language === undefined) continue;
+        expect(after[field]).toEqual(before[field]);
+      }
+    }
+    expect(storeMap.get('client:other-owner')!.value).toBe(otherBeforeRaw);
+  });
+
+  it('exchange with a non-expiring pair stores a grant without refresh token', async () => {
+    const response = await exchange({ access_token: 'gho_dummy-a', token_type: 'bearer', scope: 'repo' });
+    expect(response.status).toBe(200);
+    const grant = await new GitHubGrantStore(kv, KEY).load('octocat');
+    expect(grant?.accessToken).toBe('gho_dummy-a');
+    expect(grant?.refreshToken).toBeNull();
+    expect(grant?.accessExpiresAt).toBeNull();
+    const session = await new SessionManager(kv, KEY).getSession(sessionTokenFrom(response));
+    expect(session?.githubTokenExpiresAt).toBeNull();
+  });
+
+  it('re-anchor failure does not break admin login', async () => {
+    vi.spyOn(ClientStore.prototype, 'list').mockRejectedValueOnce(new Error('kv down'));
+    const response = await exchange({
+      access_token: 'gho_dummy-a',
+      token_type: 'bearer',
+      scope: 'repo',
+      expires_in: 28800,
+      refresh_token: 'ghr_dummy-r',
+      refresh_token_expires_in: 15897600,
+    });
+    expect(response.status).toBe(200);
+    const session = await new SessionManager(kv, KEY).getSession(sessionTokenFrom(response));
+    expect(session?.githubToken).toBe('gho_dummy-a');
+    expect(await kv.get('github-grant:octocat')).not.toBeNull();
+  });
 });

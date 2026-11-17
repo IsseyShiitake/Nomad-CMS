@@ -39,6 +39,8 @@ export interface ClientRecord {
   failedAttempts: number;
   /** ISO timestamp until which sign-in is blocked, or null. */
   lockedUntil: string | null;
+  /** Cached access-token expiry; refresh chain lives in the admin grant, never here. */
+  githubTokenExpiresAt?: number | null;
 }
 
 /** Client access store backed by a KV namespace. */

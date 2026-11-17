@@ -52,6 +52,7 @@ import {
 } from '../core/rateLimit';
 import {
   ClientStore,
+  GitHubGrantStore,
   SESSION_TTL_SECONDS,
   SessionManager,
   buildAuthorizeUrl,
@@ -284,7 +285,10 @@ async function handlePlatformPath(
 /** Route handler for /api/auth/*. */
 export const authRoutes = {
   async handle(path: string, request: Request, ctx: RouteContext): Promise<Response> {
-    const sessions = new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env));
+    const sessions = new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env), {
+      clientId: ctx.env.GITHUB_CLIENT_ID,
+      clientSecret: ctx.env.GITHUB_CLIENT_SECRET,
+    });
     // Cookie flags follow the deployment mode, not the individual request's
     // scheme. SameSite=None is only used when a credentialed cross-origin
     // allowlist is actually configured. Secure is the default (https prod):
@@ -383,7 +387,24 @@ export const authRoutes = {
           );
         }
 
-        const token = await sessions.createSession(githubToken, user);
+        const token = await sessions.createSession(githubToken, user, pair.accessExpiresAt);
+        const key = await resolveEncryptionKey(ctx.env);
+        await new GitHubGrantStore(ctx.env.SESSION_KV, key).save(user.login, pair);
+        // best-effort re-anchor: revives legacy accesses without password changes
+        try {
+          const store = new ClientStore(ctx.env.SESSION_KV, key);
+          const enc = await store.encryptGitHubToken(pair.accessToken);
+          for (const r of await store.list()) {
+            if (r.createdBy === user.login) {
+              await store.update(r.clientId, {
+                githubToken: enc,
+                githubTokenExpiresAt: pair.accessExpiresAt,
+              });
+            }
+          }
+        } catch (e) {
+          console.error('Client re-anchor failed:', e instanceof Error ? e.message : e);
+        }
 
         // Return only the public session info; the token lives in the
         // HttpOnly cookie set below and is never exposed to JS.
