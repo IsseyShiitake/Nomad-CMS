@@ -39,17 +39,30 @@ const MAX_LABEL_LENGTH = 60;
 async function requireAdmin(
   request: Request,
   ctx: RouteContext,
-): Promise<{ token: string; login: string; githubToken: string } | Response> {
+): Promise<{
+  token: string;
+  login: string;
+  githubToken: string;
+  githubTokenExpiresAt: number | null;
+} | Response> {
   const token = readSessionToken(request);
   if (!token) return jsonError('unauthorized', 'Not authenticated', 401);
 
-  const sessions = new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env));
+  const sessions = new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env), {
+    clientId: ctx.env.GITHUB_CLIENT_ID,
+    clientSecret: ctx.env.GITHUB_CLIENT_SECRET,
+  });
   const session = await sessions.getSession(token);
   if (!session) return jsonError('unauthorized', 'Not authenticated', 401);
   if ((session.kind ?? 'admin') !== 'admin') {
     return jsonError('admin_only', 'Only administrators can manage client access', 403);
   }
-  return { token, login: session.user.login, githubToken: session.githubToken };
+  return {
+    token,
+    login: session.user.login,
+    githubToken: session.githubToken,
+    githubTokenExpiresAt: session.githubTokenExpiresAt ?? null,
+  };
 }
 
 /** Route handler for /api/clients/*. */
@@ -137,6 +150,7 @@ export const clientsRoutes = {
         language,
         failedAttempts: 0,
         lockedUntil: null,
+        githubTokenExpiresAt: admin.githubTokenExpiresAt,
       };
       await store.create(record);
 

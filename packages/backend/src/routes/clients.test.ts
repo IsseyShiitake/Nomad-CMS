@@ -619,3 +619,35 @@ describe('ClientStore.list pagination', () => {
     expect(vi.mocked(kv.list).mock.calls).toHaveLength(2);
   });
 });
+
+describe('creation snapshot', () => {
+  it('created access snapshots the admin session expiry', async () => {
+    const { kv, store } = mockKv();
+    const ctx: RouteContext = { env: makeEnv(kv) };
+    const sessions = new SessionManager(kv, KEY);
+    const expiry = Date.now() + 28800_000;
+    const adminSession = await sessions.createSession(ADMIN_TOKEN, {
+      id: 1,
+      login: 'octocat',
+      name: null,
+      avatarUrl: null,
+    }, expiry);
+    const response = await clientsRoutes.handle(
+      '/',
+      makeRequest('POST', adminSession, {
+        repoOwner: 'octocat',
+        repoName: 'site',
+        label: 'ACME Corp',
+      }),
+      ctx,
+    );
+    expect(response.status).toBe(201);
+    const created = await data<{ access: Record<string, unknown>; password: string }>(response);
+    const raw = store.get(`client:${created.access.clientId as string}`)!.value;
+    const record = JSON.parse(raw) as { githubTokenExpiresAt?: number | null };
+    expect(record.githubTokenExpiresAt).toBe(expiry);
+    expect(Object.keys(created.access).sort()).toEqual(
+      ['clientId', 'label', 'repo', 'createdBy', 'createdAt', 'lastUsedAt', 'revoked'].sort(),
+    );
+  });
+});

@@ -77,7 +77,10 @@ async function resolveSession(
 } | null> {
   const token = readSessionToken(request);
   if (!token) return null;
-  const sessions = new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env));
+  const sessions = new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env), {
+    clientId: ctx.env.GITHUB_CLIENT_ID,
+    clientSecret: ctx.env.GITHUB_CLIENT_SECRET,
+  });
   const session: SessionRecord | null = await sessions.getSession(token);
   if (!session) return null;
   // Trust-boundary re-check (audit 2026-11-15, must-fix): the access record

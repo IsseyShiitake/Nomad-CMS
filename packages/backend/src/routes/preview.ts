@@ -80,10 +80,10 @@ export const previewRoutes = {
     // Any live session (admin or client) may read a public Pages miniature.
     const token = readSessionToken(request);
     if (!token) return jsonError('unauthorized', 'Not authenticated', 401);
-    const session = await new SessionManager(
-      ctx.env.SESSION_KV,
-      await resolveEncryptionKey(ctx.env),
-    ).getSession(token);
+    const session = await new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env), {
+      clientId: ctx.env.GITHUB_CLIENT_ID,
+      clientSecret: ctx.env.GITHUB_CLIENT_SECRET,
+    }).getSession(token);
     if (!session) return jsonError('unauthorized', 'Not authenticated', 401);
 
     const raw = new URL(request.url).searchParams.get('url');

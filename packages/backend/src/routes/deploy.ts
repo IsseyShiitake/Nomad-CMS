@@ -74,10 +74,10 @@ async function resolveSession(
 ): Promise<{ session: SessionRecord; login: string; kind: SessionKind } | null> {
   const token = readSessionToken(request);
   if (!token) return null;
-  const session = await new SessionManager(
-    ctx.env.SESSION_KV,
-    await resolveEncryptionKey(ctx.env),
-  ).getSession(token);
+  const session = await new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env), {
+    clientId: ctx.env.GITHUB_CLIENT_ID,
+    clientSecret: ctx.env.GITHUB_CLIENT_SECRET,
+  }).getSession(token);
   if (!session) return null;
   // Trust-boundary re-check, same as the repositories routes (audit
   // 2026-11-15): a revoked or deleted client access must lose deploy-route

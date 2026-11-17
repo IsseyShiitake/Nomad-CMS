@@ -27,7 +27,10 @@ async function requireAdmin(
   const token = readSessionToken(request);
   if (!token) return jsonError('unauthorized', 'Not authenticated', 401);
 
-  const sessions = new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env));
+  const sessions = new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env), {
+    clientId: ctx.env.GITHUB_CLIENT_ID,
+    clientSecret: ctx.env.GITHUB_CLIENT_SECRET,
+  });
   const session = await sessions.getSession(token);
   if (!session) return jsonError('unauthorized', 'Not authenticated', 401);
   if ((session.kind ?? 'admin') !== 'admin') {
