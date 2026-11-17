@@ -21,6 +21,8 @@
 
 import type { RepoRef, SessionKind, UserProfile } from '@cms/shared';
 import { decryptSecret, encryptSecret, importAesKey } from './crypto';
+import { GitHubGrantStore, TOKEN_REFRESH_MARGIN_MS } from './githubGrant';
+import type { GitHubOAuthConfig } from './githubGrant';
 
 /** Session lifetime in seconds (7 days). */
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -61,6 +63,9 @@ export interface SessionRecord {
 
   /** Client access id this session belongs to (null/absent for admins). */
   clientId?: string | null;
+
+  /** Absolute epoch-ms expiry of the cached GitHub access token (null/absent = non-expiring or legacy). */
+  githubTokenExpiresAt?: number | null;
 }
 
 /** Generates a cryptographically random session token. */
@@ -73,11 +78,15 @@ function generateToken(): string {
 /** Session manager backed by a KV namespace with at-rest encryption. */
 export class SessionManager {
   private cryptoKey: Promise<CryptoKey> | null = null;
+  private readonly grants: GitHubGrantStore;
 
   constructor(
     private readonly kv: KVNamespace,
     private readonly encryptionKey: string,
-  ) {}
+    private readonly oauth?: GitHubOAuthConfig,
+  ) {
+    this.grants = new GitHubGrantStore(kv, encryptionKey);
+  }
 
   /** Imports the AES-GCM key once and caches the promise. */
   private getKey(): Promise<CryptoKey> {
@@ -88,8 +97,21 @@ export class SessionManager {
   }
 
   /** Creates an admin session and returns the opaque session token. */
-  async createSession(githubToken: string, user: UserProfile): Promise<string> {
-    return this.createSessionWithKind(githubToken, user, 'admin', null, null, null);
+  async createSession(
+    githubToken: string,
+    user: UserProfile,
+    githubTokenExpiresAt?: number | null,
+  ): Promise<string> {
+    return this.createSessionWithKind(
+      githubToken,
+      user,
+      'admin',
+      null,
+      null,
+      null,
+      null,
+      githubTokenExpiresAt ?? null,
+    );
   }
 
   /** Creates a client session locked to one repository. */
@@ -100,6 +122,7 @@ export class SessionManager {
     connectionOwner: string | null = null,
     language: 'en' | 'fr' | null = null,
     clientId: string | null = null,
+    githubTokenExpiresAt?: number | null,
   ): Promise<string> {
     return this.createSessionWithKind(
       githubToken,
@@ -109,6 +132,7 @@ export class SessionManager {
       connectionOwner,
       language,
       clientId,
+      githubTokenExpiresAt ?? null,
     );
   }
 
@@ -121,6 +145,7 @@ export class SessionManager {
     connectionOwner: string | null,
     language: 'en' | 'fr' | null,
     clientId: string | null = null,
+    githubTokenExpiresAt: number | null = null,
   ): Promise<string> {
     const token = generateToken();
     const record: SessionRecord = {
@@ -133,6 +158,7 @@ export class SessionManager {
       connectionOwner,
       language,
       clientId,
+      githubTokenExpiresAt,
     };
 
     await this.kv.put(`${SESSION_PREFIX}${token}`, JSON.stringify(record), {
@@ -162,12 +188,29 @@ export class SessionManager {
       // surfacing a partial record.
       return null;
     }
+    let rotated = false;
+    if (
+      this.oauth &&
+      parsed.githubTokenExpiresAt != null &&
+      Date.now() >= parsed.githubTokenExpiresAt - TOKEN_REFRESH_MARGIN_MS
+    ) {
+      const grantLogin =
+        (parsed.kind ?? 'admin') === 'client' ? parsed.connectionOwner : parsed.user.login;
+      if (grantLogin) {
+        const fresh = await this.grants.resolveFreshAccessToken(grantLogin, this.oauth);
+        if (fresh) {
+          parsed.githubToken = fresh.accessToken;
+          parsed.githubTokenExpiresAt = fresh.accessExpiresAt;
+          rotated = true;
+        } else if (Date.now() >= parsed.githubTokenExpiresAt) return null;
+      }
+    }
     // Sliding renewal: if the session was last refreshed more than a day ago,
     // re-write it with a fresh TTL (and a fresh ciphertext) so an actively
     // used session does not expire. Throttled to once per day to avoid a KV
     // write on every request.
     const refreshedAt = Date.parse(parsed.lastRefreshedAt ?? parsed.createdAt);
-    if (Number.isNaN(refreshedAt) || Date.now() - refreshedAt > REFRESH_INTERVAL_MS) {
+    if (rotated || Number.isNaN(refreshedAt) || Date.now() - refreshedAt > REFRESH_INTERVAL_MS) {
       const refreshed: SessionRecord = {
         githubToken: await encryptSecret(await this.getKey(), parsed.githubToken),
         user: parsed.user,
@@ -178,6 +221,7 @@ export class SessionManager {
         connectionOwner: parsed.connectionOwner,
         language: parsed.language,
         clientId: parsed.clientId,
+        githubTokenExpiresAt: parsed.githubTokenExpiresAt,
       };
       await this.kv.put(`${SESSION_PREFIX}${token}`, JSON.stringify(refreshed), {
         expirationTtl: SESSION_TTL_SECONDS,

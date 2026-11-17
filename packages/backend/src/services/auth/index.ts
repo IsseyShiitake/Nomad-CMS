@@ -7,7 +7,10 @@
 
 export { SESSION_TTL_SECONDS, SessionManager } from './session';
 export type { SessionRecord } from './session';
-export { exchangeCodeForToken } from './oauth';
+export { exchangeCodeForToken, refreshGitHubToken, RefreshTokenRejectedError } from './oauth';
+export type { GitHubTokenPair } from './oauth';
+export { GitHubGrantStore, TOKEN_REFRESH_MARGIN_MS } from './githubGrant';
+export type { GitHubOAuthConfig } from './githubGrant';
 export { isOperatorLogin } from './operator';
 export { resolveEncryptionKey } from './crypto';
 export {
