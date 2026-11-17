@@ -90,6 +90,13 @@ const LOCK_DURATION_MS = 15 * 60 * 1000;
  * attempts (sequential or parallel, one account or many) regardless of
  * counter state. The lockout remains useful against a patient single-IP
  * script and as the per-account signal.
+ *
+ * The grant-refresh path (2026-11) is another read-modify-write caller of
+ * the same record: the client-login refresh and the /exchange re-anchor
+ * each merge a patch into the stored record with last-write-wins, so a
+ * refresh racing a failed attempt can drop or resurrect a counter update
+ * exactly like a parallel attempt does. The per-IP rate limit remains the
+ * real enforcement for this race class too.
  */
 
 /**

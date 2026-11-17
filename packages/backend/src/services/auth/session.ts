@@ -199,9 +199,13 @@ export class SessionManager {
       if (grantLogin) {
         const fresh = await this.grants.resolveFreshAccessToken(grantLogin, this.oauth);
         if (fresh) {
+          // Count only a token that actually changed as a rotation: the
+          // cached-token fallbacks (transient outage inside the margin)
+          // return the same token, and rewriting the session KV on every
+          // request until hard expiry would defeat the KV write discipline.
+          rotated = fresh.accessToken !== parsed.githubToken;
           parsed.githubToken = fresh.accessToken;
           parsed.githubTokenExpiresAt = fresh.accessExpiresAt;
-          rotated = true;
         } else if (Date.now() >= parsed.githubTokenExpiresAt) return null;
       }
     }

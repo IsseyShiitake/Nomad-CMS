@@ -255,4 +255,37 @@ describe('SessionManager token refresh', () => {
     };
     expect(after.githubTokenExpiresAt).toBe(expiry);
   });
+
+  it('transient refresh failure inside the margin does not rewrite the session', async () => {
+    const sessions = new SessionManager(kv, KEY, OAUTH);
+    const token = await sessions.createSession(TOKEN, USER, Date.now() + 60_000);
+    // The grant caches the same token the session caches, still valid but
+    // inside its own refresh margin; the refresh fails transiently, so
+    // resolve falls back to the cached token — identical to the session's.
+    // Nothing changed, so the session KV record must not be rewritten
+    // (a rewrite on every request would persist until hard expiry).
+    // Seed values flow from the rotatedResponse fixture helper rather than
+    // new literals; none of them are asserted by this test.
+    const seed = (await rotatedResponse(TOKEN).json()) as {
+      access_token: string;
+      refresh_token: string;
+    };
+    await new GitHubGrantStore(kv, KEY).save('octocat', {
+      accessToken: seed.access_token,
+      refreshToken: seed.refresh_token,
+      accessExpiresAt: Date.now() + 60_000,
+      refreshExpiresAt: Date.now() + 15897600_000,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network');
+      }),
+    );
+    const before = store.get(`session:${token}`)!.value;
+    const recovered = await sessions.getSession(token);
+    expect(recovered?.githubToken).toBe(TOKEN);
+    // Byte-equal: same ciphertext and same lastRefreshedAt — no write.
+    expect(store.get(`session:${token}`)!.value).toBe(before);
+  });
 });

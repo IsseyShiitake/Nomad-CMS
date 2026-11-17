@@ -351,6 +351,7 @@ Failure modes the spec implies; each is pinned to a test in the owning task:
 - [ ] Elisabeth signs in with her **existing** password → pages load, no error banner, FR review banner present.
 - [ ] Save an edit → PR appears on `cms/elisabeth-jrfm` in Pending reviews; `main` untouched; approve → publish (or reject → branch deleted).
 - [ ] Next-day check: admin session still alive past 8 hours without re-login; client save still works.
+- [ ] Concurrent-rotation probe: admin session + client session active at a rotation boundary (an authenticated request in each within the 5-minute expiry margin); expected: the grant survives via the re-read recovery, or the accepted failure mode appears — sign-in again recreates the grant and re-anchors; record which happened.
 - [ ] Append `log.md` entry with the verification evidence.
 
 ---
@@ -360,3 +361,76 @@ Failure modes the spec implies; each is pinned to a test in the owning task:
 Recommended: **builder executes inline** (executing-plans) on the feature branch — the tasks share tightly coupled interfaces (`GitHubTokenPair` → grant store → session → routes) and one builder context holds them cheapest; the orchestrator then runs a **fresh-context review of the full branch diff** (requesting-code-review) before any merge/push/deploy. Per-task dispatch is the fallback if the builder's context degrades.
 
 **Before the builder starts:** ravi/orchestrator commits the pending cookie/CSP set to `main` (Global Constraints precondition).
+
+---
+
+## Orchestrator review rulings (2026-11-17)
+
+Verdict: **ship, conditional on one fix round (R1–R4)**. Three passes agreed:
+the orchestrator's fresh validation (typecheck 0 · backend 263/263 · frontend
+168/168 · bundle 748,476 ≤ 819,200 · smoke + dryrun ALL PASSED), the
+orchestrator's line-by-line diff read (pinned algorithms exact, audit
+remediations intact, secret hygiene end-to-end, race test genuinely
+mutation-sensitive), and a fresh-context reviewer report (spec-compliant;
+all builder rulings verified correct).
+
+**F1 — concurrent-rotation grant deletion: accepted, with corrected
+rationale.** A rejected refresh whose recovery re-read runs before the
+winner's rotated grant is visible in KV (same-colo millisecond window or
+cross-colo lag) routes into `remove()`, deleting a freshly rotated live
+grant. Consequence is bounded and benign: backed sessions fail closed at
+their next hard expiry (≤ 8 h) and recover the designed way — the admin
+signs in again, which recreates the grant and re-anchors every access. No
+data loss, no trust bypass; millisecond window once per ~8 h. A
+delayed-reread hardening was considered and **declined**: it only narrows
+the same-colo window (cross-colo KV lag survives it), adds latency to the
+auth path, and buys false comfort. The acceptance is pinned by the test
+`rejected refresh with a stale reread removes the grant and returns null`
+in `githubGrant.test.ts`.
+
+**D2 — margin rewrites: fixed in the round (R3).** A transient failure
+inside the 5-minute margin returned the cached token with `rotated=true`,
+rewriting the session KV on every request until hard expiry — a violation
+of the KV write discipline. `rotated` is now true only when the token
+actually changed. Pinned by `transient refresh failure inside the margin
+does not rewrite the session` in `session.test.ts` (red first: the
+byte-equality assertion failed against the un-guarded code with a bumped
+`lastRefreshedAt` and fresh ciphertext, then went green).
+
+**D1 / D3 — deferred minors stand as accepted** (unreachable null-owner
+state; pre-existing KV last-write-wins race class). R4 extends the lockout
+honesty note in `routes/auth.ts` to name re-anchor and the client-login
+refresh as further read-modify-write callers of the same counter fields.
+R2 records the F1 acceptance in `docs/github-app.md`. The Task 9 checklist
+gains the concurrent-rotation probe above.
+
+### Executor observations (fix round, 2026-11-17)
+
+Two same-class notes from the round's own review, recorded for the
+orchestrator's verdict; no code change was made for either:
+
+- A successful GitHub refresh whose `save()` throws leaves the grant
+  holding the consumed refresh token; the next refresh is rejected and
+  removes the grant. Same bounded consequence and recovery as F1 (fail
+  closed at hard expiry, admin re-login restores), rarer trigger.
+- In `/exchange`, the grant `save()` sits outside any try (per the plan's
+  ordering: "grant save happens before the try"), so a KV write failure
+  there fails the whole exchange after the session record was already
+  written — an orphan session record; the user retries and succeeds.
+
+### Orchestrator final verdict (2026-11-17 20:15)
+
+Round R1–R4 verified against spec on the fixed tree. Fresh validation:
+typecheck 0; backend 265/265 (+2 pinned tests); frontend 168/168;
+build:single 748,503 B ≤ 819,200; smoke:single + dryrun:single ALL PASSED.
+The R3 guard was mutation-verified by the orchestrator: reverting it to
+`rotated = true` turns exactly the no-rewrite test RED (12/13 pass); the
+file was restored byte-identical (sha256 match). Both executor observations
+are ACCEPTED as bounded notes of the F1 class, no code change owed:
+(a) a successful refresh whose `save()` throws leaves the consumed refresh
+token in place — the next refresh is rejected and removes the grant, with
+the same fail-closed-at-hard-expiry / admin-re-login recovery; (b) a grant
+`save()` failure in `/exchange` orphans the just-written session record —
+the user retries and succeeds, and the orphan rides its still-valid token
+≤ 8 h, then fails closed; KV TTL cleans it up. Branch ready for the merge
+gate (ravi approval), then Task 9 live verification.

@@ -293,4 +293,39 @@ describe('GitHubGrantStore', () => {
     });
     expect(result).toBeNull();
   });
+
+  it('rejected refresh with a stale reread removes the grant and returns null', async () => {
+    // Pins the orchestrator review ruling (2026-11-17): when a concurrent
+    // rotation is not yet visible in KV, the recovery re-read observes the
+    // stale grant and the rejected refresh routes into remove(), deleting
+    // whatever the winner wrote. Accepted: backed sessions fail closed at
+    // their next hard expiry (≤ 8 h) and recover via the admin signing in
+    // again. A mock KV has no lag, so "stale reread" here is the
+    // unchanged-grant case; the test pins the routing, not the lag.
+    // Seed values flow from the rotatedResponse fixture helper rather than
+    // new literals; none of them are asserted by this test.
+    const grants = new GitHubGrantStore(kv, KEY);
+    const seed = (await rotatedResponse().json()) as {
+      access_token: string;
+      refresh_token: string;
+    };
+    await grants.save('octocat', {
+      accessToken: seed.access_token,
+      refreshToken: seed.refresh_token,
+      accessExpiresAt: Date.now() - 1000,
+      refreshExpiresAt: Date.now() + 15897600_000,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new RefreshTokenRejectedError('bad_refresh_token');
+      }),
+    );
+    const result = await grants.resolveFreshAccessToken('octocat', {
+      clientId: 'cid',
+      clientSecret: 'secret',
+    });
+    expect(result).toBeNull();
+    expect(await grants.load('octocat')).toBeNull();
+  });
 });

@@ -100,6 +100,10 @@ the admin must sign in again to create a fresh grant. Until then, client
 sign-in for accesses backed by that grant shows the "ask the administrator"
 banner instead of a generic invalid-credentials message, because the
 password was correct; only the GitHub connection behind the access is dead.
+Very rarely, a concurrent-rotation interleaving — two requests refreshing
+the same grant at the same moment, the loser's recovery re-read observing
+the stale grant — can remove a live grant; the recovery is the same: the
+admin signs in again.
 
 ---
 
