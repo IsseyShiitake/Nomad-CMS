@@ -196,18 +196,18 @@ describe('GitHubGrantStore', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
+        // Simulate the other concurrent request rotating the grant while
+        // this request's refresh is in flight: save the rotated pair, then
+        // reject this caller's refresh as GitHub would (single-use rotation).
+        await new GitHubGrantStore(kv, KEY).save('octocat', {
+          accessToken: 'gho_dummy-b',
+          refreshToken: 'ghr_dummy-r2',
+          accessExpiresAt: Date.now() + 28800_000,
+          refreshExpiresAt: Date.now() + 15897600_000,
+        });
         throw new RefreshTokenRejectedError('bad_refresh_token');
       }),
     );
-    // Simulate the other concurrent request rotating the grant before resolve runs:
-    // we overwrite KV directly so the re-read sees a fresh, different token.
-    // (The fetch stub rejects, but the re-read must recover.)
-    await grants.save('octocat', {
-      accessToken: 'gho_dummy-b',
-      refreshToken: 'ghr_dummy-r2',
-      accessExpiresAt: Date.now() + 28800_000,
-      refreshExpiresAt: Date.now() + 15897600_000,
-    });
     const result = await grants.resolveFreshAccessToken('octocat', {
       clientId: 'cid',
       clientSecret: 'secret',
