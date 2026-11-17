@@ -577,7 +577,7 @@ export const en: Messages = {
     backToPages: 'Back to pages',
     welcome: 'Welcome, {label}',
     backingTokenInvalid:
-      'There is a problem with this access — the GitHub connection behind it has expired or been revoked. Please ask the administrator to recreate your access.',
+      'There is a problem with this access — the GitHub connection behind it has expired or been revoked. Please ask the administrator to sign in again to restore it.',
     expandHint: 'Your pages are loading — pick one to edit',
   },
   help: {
@@ -936,7 +936,7 @@ export const fr: Messages = {
     backToPages: 'Retour aux pages',
     welcome: 'Bienvenue, {label}',
     backingTokenInvalid:
-      "Il y a un problème avec cet accès — la connexion GitHub associée a expiré ou a été révoquée. Demandez à l'administrateur de recréer votre accès.",
+      "Il y a un problème avec cet accès — la connexion GitHub associée a expiré ou a été révoquée. Demandez à l'administrateur de se reconnecter pour le rétablir.",
     expandHint: 'Vos pages se chargent — choisissez-en une à modifier',
   },
   help: {

@@ -117,7 +117,7 @@ describe('ClientPagesPage', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          'There is a problem with this access — the GitHub connection behind it has expired or been revoked. Please ask the administrator to recreate your access.',
+          'There is a problem with this access — the GitHub connection behind it has expired or been revoked. Please ask the administrator to sign in again to restore it.',
         ),
       ).not.toBeNull();
     });

@@ -166,3 +166,28 @@ describe('ClientLoginPage', () => {
     });
   });
 });
+
+describe('ClientLoginPage backing token', () => {
+  it('shows the backing-token message when the access GitHub connection is dead', async () => {
+    vi.mocked(getSession).mockResolvedValue(null);
+    vi.mocked(clientLogin).mockRejectedValue(new ApiClientError(403, 'backing_token_invalid', 'nope'));
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: /client/i }));
+
+    fireEvent.change(await screen.findByLabelText('Access ID'), {
+      target: { value: 'acme-x1y2' },
+    });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          'There is a problem with this access — the GitHub connection behind it has expired or been revoked. Please ask the administrator to sign in again to restore it.',
+        ),
+      ).not.toBeNull();
+    });
+  });
+});

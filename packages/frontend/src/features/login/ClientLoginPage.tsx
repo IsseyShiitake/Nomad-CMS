@@ -140,6 +140,7 @@ export function ClientLoginPage() {
         setError(m.login.serverUnreachable);
       } else if (err instanceof ApiClientError) {
         if (err.code === 'revoked') setError(m.login.revoked);
+        else if (err.code === 'backing_token_invalid') setError(m.client.backingTokenInvalid);
         else setError(m.login.invalid);
       } else {
         setError(m.login.invalid);
