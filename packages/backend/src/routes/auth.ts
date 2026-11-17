@@ -55,6 +55,7 @@ import {
   GitHubGrantStore,
   SESSION_TTL_SECONDS,
   SessionManager,
+  TOKEN_REFRESH_MARGIN_MS,
   buildAuthorizeUrl,
   codeChallengeS256,
   exchangeCodeForToken,
@@ -511,6 +512,29 @@ export const authRoutes = {
         return jsonError('invalid_credentials', 'Invalid access ID or password', 401);
       }
 
+      let tokenExpiresAt = record.githubTokenExpiresAt ?? null;
+      if (tokenExpiresAt != null && Date.now() >= tokenExpiresAt - TOKEN_REFRESH_MARGIN_MS) {
+        const grants = new GitHubGrantStore(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env));
+        const fresh = await grants.resolveFreshAccessToken(record.createdBy, {
+          clientId: ctx.env.GITHUB_CLIENT_ID,
+          clientSecret: ctx.env.GITHUB_CLIENT_SECRET,
+        });
+        if (fresh) {
+          githubToken = fresh.accessToken;
+          tokenExpiresAt = fresh.accessExpiresAt;
+          await store.update(clientId, {
+            githubToken: await store.encryptGitHubToken(fresh.accessToken),
+            githubTokenExpiresAt: fresh.accessExpiresAt,
+          });
+        } else if (Date.now() >= tokenExpiresAt) {
+          return jsonError(
+            'backing_token_invalid',
+            'The GitHub connection behind this access has expired or been revoked. Ask the administrator to sign in again.',
+            403,
+          );
+        }
+      }
+
       const user = syntheticUser(record.label);
       // The session carries the creating admin's login (deploy connections
       // are keyed by it), the access's stored language so the frontend can
@@ -523,6 +547,7 @@ export const authRoutes = {
         record.createdBy,
         record.language ?? null,
         record.clientId,
+        tokenExpiresAt,
       );
 
       const info: SessionInfo = {

@@ -769,3 +769,156 @@ describe('exchange grant + re-anchor', () => {
     expect(await kv.get('github-grant:octocat')).not.toBeNull();
   });
 });
+
+describe('client login grant resolution', () => {
+  let kv: KVNamespace;
+  let storeMap: Map<string, { value: string }>;
+  let ctx: RouteContext;
+
+  beforeEach(() => {
+    ({ kv, store: storeMap } = mockKv());
+    ctx = { env: makeEnv(kv) };
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function jsonResponse(payload: unknown): Response {
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  function rotatedResponse() {
+    return jsonResponse({
+      access_token: 'gho_dummy-b',
+      token_type: 'bearer',
+      scope: 'repo',
+      expires_in: 28800,
+      refresh_token: 'ghr_dummy-r2',
+      refresh_token_expires_in: 15897600,
+    });
+  }
+
+  /** Seeds one live access whose password is `client-password-1`. */
+  async function seed(overrides: Record<string, unknown> = {}) {
+    const salt = generateSalt();
+    const store = new ClientStore(kv, KEY);
+    await store.create({
+      clientId: 'acme-corp',
+      label: 'ACME Corp',
+      repo: { owner: 'octocat', repo: 'site' },
+      createdBy: 'octocat',
+      passwordHash: await hashPassword('client-password-1', salt),
+      salt,
+      githubToken: await store.encryptGitHubToken('ghp_admin_old'),
+      createdAt: '2026-11-16T00:00:00Z',
+      lastUsedAt: null,
+      revoked: false,
+      failedAttempts: 0,
+      lockedUntil: null,
+      ...overrides,
+    } as never);
+  }
+
+  function login(clientId: string, password: string): Promise<Response> {
+    return authRoutes.handle(
+      '/client-login',
+      new Request('http://localhost/api/auth/client-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, password }),
+      }),
+      ctx,
+    );
+  }
+
+  function sessionTokenFrom(response: Response): string {
+    const cookie = response.headers.get('Set-Cookie') ?? '';
+    const match = /cms_session=([0-9a-f]{64})/.exec(cookie);
+    if (!match) throw new Error(`no session cookie in: ${cookie}`);
+    return match[1]!;
+  }
+
+  it('legacy record without expiry logs in unchanged', async () => {
+    await seed();
+    const fetchMock = vi.fn(async () => {
+      throw new Error('must not fetch');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await login('acme-corp', 'client-password-1');
+    expect(response.status).toBe(200);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const session = await new SessionManager(kv, KEY).getSession(sessionTokenFrom(response));
+    expect(session?.githubToken).toBe('ghp_admin_old');
+    expect(session?.githubTokenExpiresAt ?? null).toBeNull();
+  });
+
+  it('near-expiry record refreshes through the grant and updates its cache', async () => {
+    const expiry = Date.now() + 60_000;
+    await seed({ githubTokenExpiresAt: expiry, requireApproval: true });
+    const beforeRaw = storeMap.get('client:acme-corp')!.value;
+    const before = JSON.parse(beforeRaw) as Record<string, unknown>;
+    await new GitHubGrantStore(kv, KEY).save('octocat', {
+      accessToken: 'gho_dummy-a',
+      refreshToken: 'ghr_dummy-r',
+      accessExpiresAt: Date.now() - 1000,
+      refreshExpiresAt: Date.now() + 15897600_000,
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(rotatedResponse()));
+    const beforeMs = Date.now();
+    const response = await login('acme-corp', 'client-password-1');
+    const afterMs = Date.now();
+    expect(response.status).toBe(200);
+    const after = JSON.parse(storeMap.get('client:acme-corp')!.value) as Record<string, unknown>;
+    expect(after.githubToken).not.toBe(before.githubToken);
+    expect(after.githubTokenExpiresAt).toBeGreaterThanOrEqual(beforeMs + 28800_000);
+    expect(after.githubTokenExpiresAt).toBeLessThanOrEqual(afterMs + 28800_000);
+    expect(after.passwordHash).toBe(before.passwordHash);
+    expect(after.salt).toBe(before.salt);
+    expect(after.requireApproval).toBe(before.requireApproval);
+    const session = await new SessionManager(kv, KEY).getSession(sessionTokenFrom(response));
+    expect(session?.githubToken).toBe('gho_dummy-b');
+  });
+
+  it('expired record with a dead grant returns 403 backing_token_invalid', async () => {
+    await seed({ githubTokenExpiresAt: Date.now() - 1000 });
+    await new GitHubGrantStore(kv, KEY).save('octocat', {
+      accessToken: 'gho_dummy-a',
+      refreshToken: null,
+      accessExpiresAt: Date.now() - 1000,
+      refreshExpiresAt: null,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('must not fetch');
+      }),
+    );
+    const response = await login('acme-corp', 'client-password-1');
+    expect(response.status).toBe(403);
+    const { error } = (await response.json()) as { error: { code: string } };
+    expect(error.code).toBe('backing_token_invalid');
+    expect(error.code).not.toBe('invalid_credentials');
+  });
+
+  it('wrong password still 401 and increments failedAttempts', async () => {
+    await seed();
+    const response = await login('acme-corp', 'wrong-password');
+    expect(response.status).toBe(401);
+    const { error } = (await response.json()) as { error: { code: string } };
+    expect(error.code).toBe('invalid_credentials');
+    const after = JSON.parse(storeMap.get('client:acme-corp')!.value) as { failedAttempts: number };
+    expect(after.failedAttempts).toBe(1);
+  });
+
+  it('revoked access still 401 revoked', async () => {
+    await seed({ revoked: true });
+    const response = await login('acme-corp', 'client-password-1');
+    expect(response.status).toBe(401);
+    const { error } = (await response.json()) as { error: { code: string } };
+    expect(error.code).toBe('revoked');
+  });
+});
