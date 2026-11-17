@@ -79,9 +79,15 @@ async function runChecks() {
   check('SPA HTML renders (title present)', homeText.includes('<title>Nomad CMS</title>'));
   const builtHtml = await readFile(join(root, 'packages', 'frontend', 'dist', 'index.html'), 'utf8');
   const builtCsp = /<meta[^>]+http-equiv="Content-Security-Policy"[^>]+content="([^"]+)"/.exec(builtHtml)?.[1];
+  // frame-ancestors is ignored (and logged) in <meta> form, so the meta
+  // policy must not carry it while the enforced header still does.
+  const expectedCsp = builtCsp && !builtCsp.includes('frame-ancestors')
+    ? `${builtCsp}; frame-ancestors 'none'`
+    : builtCsp;
+  check('built meta CSP carries no frame-ancestors', !!builtCsp && !builtCsp.includes('frame-ancestors'), builtCsp ?? 'none');
   check(
-    'CSP header equals the built index.html policy (1:1 _headers port)',
-    !!builtCsp && home.headers.get('content-security-policy') === builtCsp,
+    'CSP header equals the built index.html policy + frame-ancestors (_headers port)',
+    !!builtCsp && home.headers.get('content-security-policy') === expectedCsp,
     home.headers.get('content-security-policy') ?? 'none',
   );
   check(

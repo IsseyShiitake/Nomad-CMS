@@ -3,7 +3,10 @@
 #
 # NOTE: the Content-Security-Policy line below is REGENERATED at build time
 # from index.html's CSP meta tag (vite.config.ts cspPlugin) — the two
-# sources cannot drift; edit the policy in index.html only.
+# sources cannot drift; edit the policy in index.html only. One intentional
+# divergence: frame-ancestors lives only in this header copy (browsers
+# ignore it in <meta> form and log an error), so the built header carries
+# it even though the meta policy does not.
 
 # Security headers for all routes
 /*

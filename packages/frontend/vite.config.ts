@@ -21,6 +21,9 @@ import type { Plugin } from 'vite';
  * The `_headers` CSP is REGENERATED from the built index.html's meta tag, so
  * the two can never drift: index.html is the single source of truth (it also
  * carries `form-action`, which the old hand-maintained copy was missing).
+ * One intentional divergence: `frame-ancestors` is ignored (and logged as an
+ * error) when delivered via `<meta>`, so it lives only in the HTTP header
+ * copy, appended below when regressing the meta policy into `_headers`.
  */
 function cspPlugin(apiOrigin: string): Plugin {
   return {
@@ -52,9 +55,13 @@ function cspPlugin(apiOrigin: string): Plugin {
       }
       // The built meta already carries the final connect-src (the
       // transformIndexHtml hook resolved the API origin), so the extracted
-      // policy is used verbatim; regenerating the _headers copy from it
-      // keeps the two sources from drifting.
-      const csp = meta[1]!;
+      // policy is used verbatim apart from frame-ancestors, which browsers
+      // ignore in <meta> form: it is appended to the header copy only, so
+      // the enforced HTTP policy keeps framing blocked without console noise.
+      const metaCsp = meta[1]!;
+      const csp = metaCsp.includes('frame-ancestors')
+        ? metaCsp
+        : `${metaCsp}; frame-ancestors 'none'`;
       const headersPath = `${distDir}/_headers`;
       let headers: string;
       try {

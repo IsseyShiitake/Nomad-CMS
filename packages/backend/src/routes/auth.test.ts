@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../env';
 import { sessionCookie } from '../core/http';
-import { ClientStore, SessionManager } from '../services/auth';
+import { ClientStore, SessionManager, generateSalt, hashPassword } from '../services/auth';
 import {
   AUTHORIZE_RATE_LIMIT,
   AUTHORIZE_RATE_WINDOW_SECONDS,
@@ -289,6 +289,92 @@ describe('cookie deployment mode', () => {
   it('sets Lax without Secure for plain-http local development', () => {
     const cookie = sessionCookie(false, 'tok', 3600, false);
     expect(cookie).toContain('SameSite=Lax');
+    expect(cookie).not.toContain('Secure');
+  });
+});
+
+describe('client-login Secure default (audit 2026-11-16 F2)', () => {
+  let kv: KVNamespace;
+
+  beforeEach(() => {
+    ({ kv } = mockKv());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Seeds one live access whose password is `client-password-1`. */
+  async function seedClient() {
+    const salt = generateSalt();
+    const store = new ClientStore(kv, KEY);
+    await store.create({
+      clientId: 'acme-corp',
+      label: 'ACME Corp',
+      repo: { owner: 'octocat', repo: 'site' },
+      createdBy: 'octocat',
+      passwordHash: await hashPassword('client-password-1', salt),
+      salt,
+      githubToken: await store.encryptGitHubToken('ghp_admin'),
+      createdAt: '2026-11-16T00:00:00Z',
+      lastUsedAt: null,
+      revoked: false,
+      failedAttempts: 0,
+      lockedUntil: null,
+    });
+  }
+
+  /** POST /client-login with the seeded password under the given redirect URI. */
+  async function loginWithRedirectUri(redirectUri: string): Promise<Response> {
+    const ctx: RouteContext = {
+      env: { ...makeEnv(kv), GITHUB_REDIRECT_URI: redirectUri },
+    };
+    return authRoutes.handle(
+      '/client-login',
+      new Request('https://cms.example.com/api/auth/client-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: 'acme-corp', password: 'client-password-1' }),
+      }),
+      ctx,
+    );
+  }
+
+  it('sets Secure when GITHUB_REDIRECT_URI is empty (secure by default)', async () => {
+    await seedClient();
+    const response = await loginWithRedirectUri('');
+    expect(response.status).toBe(200);
+    const cookie = response.headers.get('Set-Cookie') ?? '';
+    expect(cookie).toContain('__Host-cms_session=');
+    // Empty slot on an https deployment must not emit a __Host- cookie
+    // without Secure — browsers silently reject it and login breaks.
+    expect(cookie).toContain('Secure');
+  });
+
+  it('sets Secure for an https redirect URI', async () => {
+    await seedClient();
+    const response = await loginWithRedirectUri('https://cms.example.com/auth/callback');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Set-Cookie') ?? '').toContain('Secure');
+  });
+
+  it('omits Secure only for an explicit plain-http redirect URI', async () => {
+    await seedClient();
+    const response = await loginWithRedirectUri('http://localhost:5173/auth/callback');
+    expect(response.status).toBe(200);
+    const cookie = response.headers.get('Set-Cookie') ?? '';
+    expect(cookie).toContain('__Host-cms_session=');
+    expect(cookie).not.toContain('Secure');
+  });
+
+  it('treats the http scheme case-insensitively (RFC 3986)', async () => {
+    await seedClient();
+    // URI schemes are case-insensitive, so an uppercase HTTP:// dev URI
+    // is still plain http: Secure there would be rejected by the browser.
+    const response = await loginWithRedirectUri('HTTP://localhost:5173/auth/callback');
+    expect(response.status).toBe(200);
+    const cookie = response.headers.get('Set-Cookie') ?? '';
+    expect(cookie).toContain('__Host-cms_session=');
     expect(cookie).not.toContain('Secure');
   });
 });

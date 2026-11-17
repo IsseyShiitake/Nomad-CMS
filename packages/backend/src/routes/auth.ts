@@ -285,10 +285,14 @@ async function handlePlatformPath(
 export const authRoutes = {
   async handle(path: string, request: Request, ctx: RouteContext): Promise<Response> {
     const sessions = new SessionManager(ctx.env.SESSION_KV, await resolveEncryptionKey(ctx.env));
-    // Cookie flags follow the deployment mode (https redirect URI ⇒ prod),
-    // not the individual request's scheme. SameSite=None is only used when
-    // a credentialed cross-origin allowlist is actually configured.
-    const httpsDeployment = ctx.env.GITHUB_REDIRECT_URI.startsWith('https://');
+    // Cookie flags follow the deployment mode, not the individual request's
+    // scheme. SameSite=None is only used when a credentialed cross-origin
+    // allowlist is actually configured. Secure is the default (https prod):
+    // an empty or malformed redirect URI must still emit it, because a
+    // __Host- cookie without Secure is silently rejected by the browser and
+    // login breaks with no error. Only an explicit plain-http URI (local
+    // development) opts out — the browser would reject Secure over http.
+    const httpsDeployment = !/^http:\/\//i.test(ctx.env.GITHUB_REDIRECT_URI.trim());
     const allowCrossOrigin = isCredentialedCorsEnabled(ctx.env);
     // GET /authorize — build the GitHub OAuth authorize URL with a fresh,
     // server-issued state stored in KV (10-minute TTL). The frontend just
