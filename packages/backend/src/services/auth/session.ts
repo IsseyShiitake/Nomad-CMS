@@ -24,8 +24,15 @@ import { decryptSecret, encryptSecret, importAesKey } from './crypto';
 import { GitHubGrantStore, TOKEN_REFRESH_MARGIN_MS } from './githubGrant';
 import type { GitHubOAuthConfig } from './githubGrant';
 
-/** Session lifetime in seconds (7 days). */
-export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+/**
+ * Session lifetime in seconds (400 days — the browser cookie ceiling,
+ * RFC 6265bis). Logins must not expire under normal use: the sliding
+ * renewal below re-extends the KV TTL on every active day and /session
+ * re-issues the cookie with the same max-age, so an active login is
+ * effectively permanent. Logout, the token-invalid purge, and the
+ * revoked-access re-check still end sessions immediately.
+ */
+export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 400;
 /** Sliding renewal: re-write a session's TTL at most this often (1 day). */
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 

@@ -20,6 +20,14 @@ export interface GitHubOAuthConfig {
 /** Refresh this far before hard expiry (5 minutes). */
 export const TOKEN_REFRESH_MARGIN_MS = 300_000;
 
+/**
+ * Keep-alive threshold: the daily cron rotates any grant whose refresh
+ * token expires within this window (45 days), so a dormant login's
+ * six-month refresh chain never lapses. Active grants rotate naturally
+ * on use and rarely fall inside the window.
+ */
+export const GRANT_KEEP_ALIVE_THRESHOLD_MS = 45 * 24 * 60 * 60 * 1000;
+
 /** KV key prefix for grant records. */
 const GRANT_PREFIX = 'github-grant:';
 
@@ -124,4 +132,44 @@ export class GitHubGrantStore {
         : null;
     }
   }
+}
+
+/**
+ * Cron keep-alive: rotates every grant whose refresh token is within
+ * GRANT_KEEP_ALIVE_THRESHOLD_MS of expiry, resetting the six-month clock
+ * so dormant logins never lapse. Rejected refresh chains are removed
+ * (the admin's next sign-in recreates them); transient failures are
+ * left for the next daily run. Never logs token values.
+ */
+export async function keepAliveGrants(
+  kv: KVNamespace,
+  encryptionKey: string,
+  oauth: GitHubOAuthConfig,
+): Promise<{ rotated: number; removed: number; failed: number }> {
+  const grants = new GitHubGrantStore(kv, encryptionKey);
+  const summary = { rotated: 0, removed: 0, failed: 0 };
+  let cursor: string | undefined;
+  do {
+    const listing = await kv.list({ prefix: GRANT_PREFIX, cursor });
+    for (const key of listing.keys) {
+      const login = key.name.slice(GRANT_PREFIX.length);
+      const grant = await grants.load(login);
+      if (!grant || !grant.refreshToken || grant.refreshExpiresAt == null) continue;
+      if (grant.refreshExpiresAt - Date.now() >= GRANT_KEEP_ALIVE_THRESHOLD_MS) continue;
+      try {
+        const pair = await refreshGitHubToken(oauth.clientId, oauth.clientSecret, grant.refreshToken);
+        await grants.save(login, pair);
+        summary.rotated += 1;
+      } catch (e) {
+        if (e instanceof RefreshTokenRejectedError) {
+          await grants.remove(login);
+          summary.removed += 1;
+        } else {
+          summary.failed += 1;
+        }
+      }
+    }
+    cursor = listing.list_complete ? undefined : listing.cursor;
+  } while (cursor !== undefined);
+  return summary;
 }

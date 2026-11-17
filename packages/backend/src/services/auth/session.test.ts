@@ -14,12 +14,12 @@ const KEY = 'oDUtY2LrlmkJi0/WHDoEwY9ZfUOFYaFV9qE3QBFLZ7Q=';
 const USER: UserProfile = { id: 1, login: 'octocat', name: null, avatarUrl: null };
 const TOKEN = 'ghp_secret-github-token-123';
 
-/** Minimal in-memory KVNamespace mock (only put/get/delete are exercised). */
+/** Minimal in-memory KVNamespace mock (put/get/delete; put captures TTL options). */
 function mockKv() {
-  const store = new Map<string, { value: string }>();
+  const store = new Map<string, { value: string; options?: { expirationTtl?: number } }>();
   const kv = {
-    async put(key: string, value: string) {
-      store.set(key, { value });
+    async put(key: string, value: string, options?: { expirationTtl?: number }) {
+      store.set(key, { value, options });
     },
     async get(key: string) {
       return store.get(key)?.value ?? null;
@@ -33,7 +33,7 @@ function mockKv() {
 
 describe('SessionManager encryption', () => {
   let kv: KVNamespace;
-  let store: Map<string, { value: string }>;
+  let store: Map<string, { value: string; options?: { expirationTtl?: number } }>;
 
   beforeEach(() => {
     ({ kv, store } = mockKv());
@@ -72,6 +72,24 @@ describe('SessionManager encryption', () => {
     );
     await expect(new SessionManager(kv, 'short').createSession(TOKEN, USER)).rejects.toThrow();
   });
+
+  it('writes the 400-day sliding TTL on create and on renewal', async () => {
+    // Sessions must not expire under normal use: 400 days is the browser
+    // cookie ceiling (RFC 6265bis), and the daily slide re-extends it on
+    // every active day, so an active login is effectively permanent.
+    const sessions = new SessionManager(kv, KEY);
+    const token = await sessions.createSession(TOKEN, USER);
+    expect(store.get(`session:${token}`)!.options?.expirationTtl).toBe(34_560_000);
+
+    // Force the daily sliding renewal and check it re-extends the same TTL.
+    const record = JSON.parse(store.get(`session:${token}`)!.value) as {
+      lastRefreshedAt: string;
+    };
+    record.lastRefreshedAt = new Date(Date.now() - 25 * 3_600_000).toISOString();
+    store.set(`session:${token}`, { value: JSON.stringify(record) });
+    await sessions.getSession(token);
+    expect(store.get(`session:${token}`)!.options?.expirationTtl).toBe(34_560_000);
+  });
 });
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -96,7 +114,7 @@ const OAUTH = { clientId: 'cid', clientSecret: 'secret' };
 
 describe('SessionManager token refresh', () => {
   let kv: KVNamespace;
-  let store: Map<string, { value: string }>;
+  let store: Map<string, { value: string; options?: { expirationTtl?: number } }>;
 
   beforeEach(() => {
     ({ kv, store } = mockKv());

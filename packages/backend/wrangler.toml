@@ -33,6 +33,12 @@ not_found_handling = "single-page-application"
 binding = "ASSETS"
 run_worker_first = ["/api/*"]
 
+# Daily grant keep-alive (04:17 UTC): rotates any GitHub grant whose
+# refresh token is within 45 days of expiry so dormant logins never lapse
+# (services/auth/githubGrant.ts keepAliveGrants). Sessions slide on use.
+[triggers]
+crons = ["17 4 * * *"]
+
 # Public variables. The GitHub Client ID is public by design;
 # the OAuth redirect URI routes back to the frontend.
 # The redirect URI must match the GitHub OAuth App's registered callback

@@ -105,6 +105,22 @@ the same grant at the same moment, the loser's recovery re-read observing
 the stale grant — can remove a live grant; the recovery is the same: the
 admin signs in again.
 
+### Session lifetime: logins do not expire under normal use
+
+Sessions (admin and client) carry a 400-day TTL — the browser cookie
+ceiling (RFC 6265bis) — and slide: every active day re-extends the KV
+record, and every `/session` call re-issues the cookie with a fresh
+max-age, so an active login is effectively permanent. A daily cron
+(`wrangler.toml [triggers]`, 04:17 UTC) additionally rotates any grant
+whose refresh token is within 45 days of its six-month expiry
+(`keepAliveGrants`), so even a completely dormant login never lapses.
+Client passwords never expire.
+
+Sessions still end immediately when they should: logout, the
+token-invalid purge, and the revoked/deleted-access re-check are
+unchanged — an administrator can always cut a client off by revoking the
+access, and a revoked GitHub authorization still forces a fresh sign-in.
+
 ---
 
 ## Option 2: GitHub App (advanced / future)

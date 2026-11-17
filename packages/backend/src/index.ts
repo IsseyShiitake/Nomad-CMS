@@ -8,9 +8,24 @@
 import type { Env } from './env';
 import { jsonError } from './core/http';
 import { handleApiRequest } from './routes';
+import { keepAliveGrants, resolveEncryptionKey } from './services/auth';
 
 /** Main fetch handler for the Worker. */
 export default {
+  /**
+   * Daily cron (wrangler.toml [triggers]): keeps dormant logins alive by
+   * rotating any GitHub grant whose refresh token nears its six-month
+   * expiry. Sessions themselves slide on use; this covers the no-traffic
+   * case so neither admin nor client is ever asked to sign in again
+   * merely because time passed.
+   */
+  async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
+    const summary = await keepAliveGrants(env.SESSION_KV, await resolveEncryptionKey(env), {
+      clientId: env.GITHUB_CLIENT_ID,
+      clientSecret: env.GITHUB_CLIENT_SECRET,
+    });
+    console.log('Grant keep-alive:', JSON.stringify(summary));
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 

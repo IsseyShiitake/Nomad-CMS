@@ -377,6 +377,16 @@ describe('client-login Secure default (audit 2026-11-16 F2)', () => {
     expect(cookie).toContain('__Host-cms_session=');
     expect(cookie).not.toContain('Secure');
   });
+
+  it('sets the 400-day sliding max-age on the session cookie', async () => {
+    // Logins must not expire under normal use: the cookie lives at the
+    // browser ceiling (400 days, RFC 6265bis) and is re-issued on every
+    // /session call, so an active browser never sees it lapse.
+    await seedClient();
+    const response = await loginWithRedirectUri('https://cms.example.com/auth/callback');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Set-Cookie') ?? '').toContain('Max-Age=34560000');
+  });
 });
 
 describe('authorize rate limiting (per-IP KV budget guard)', () => {

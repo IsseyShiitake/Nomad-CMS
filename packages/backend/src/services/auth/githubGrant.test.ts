@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GitHubTokenPair } from './oauth';
 import { RefreshTokenRejectedError } from './oauth';
-import { GitHubGrantStore } from './githubGrant';
+import { GitHubGrantStore, keepAliveGrants } from './githubGrant';
 
 const KEY = 'oDUtY2LrlmkJi0/WHDoEwY9ZfUOFYaFV9qE3QBFLZ7Q=';
 
@@ -19,6 +19,12 @@ function mockKv() {
     },
     async delete(key: string) {
       store.delete(key);
+    },
+    async list(options: { prefix?: string }) {
+      const keys = [...store.keys()]
+        .filter((key) => !options.prefix || key.startsWith(options.prefix))
+        .map((name) => ({ name }));
+      return { keys, list_complete: true };
     },
   } as unknown as KVNamespace;
   return { kv, store };
@@ -327,5 +333,109 @@ describe('GitHubGrantStore', () => {
     });
     expect(result).toBeNull();
     expect(await grants.load('octocat')).toBeNull();
+  });
+});
+
+describe('keepAliveGrants (dormant-login cron)', () => {
+  let kv: KVNamespace;
+  let store: Map<string, { value: string; options?: { expirationTtl?: number } }>;
+  const OAUTH = { clientId: 'cid', clientSecret: 'secret' };
+
+  beforeEach(() => {
+    ({ kv, store } = mockKv());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function seedGrant(login: string, overrides: Partial<GitHubTokenPair> = {}) {
+    await new GitHubGrantStore(kv, KEY).save(login, {
+      accessToken: 'gho_dummy-a',
+      refreshToken: 'ghr_dummy-r',
+      accessExpiresAt: Date.now() + 28800_000,
+      refreshExpiresAt: Date.now() + 15897600_000,
+      ...overrides,
+    });
+  }
+
+  it('rotates a grant whose refresh expiry is inside the 45-day threshold', async () => {
+    await seedGrant('octocat', { refreshExpiresAt: Date.now() + 30 * 86400_000 });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(rotatedResponse()));
+    const summary = await keepAliveGrants(kv, KEY, OAUTH);
+    expect(summary.rotated).toBe(1);
+    const loaded = await new GitHubGrantStore(kv, KEY).load('octocat');
+    expect(loaded?.accessToken).toBe('gho_dummy-b');
+    expect(loaded?.refreshToken).toBe('ghr_dummy-r2');
+    // The rotated pair resets the six-month clock and the KV TTL with it.
+    expect(loaded?.refreshExpiresAt).toBeGreaterThan(Date.now() + 15897600_000 - 5000);
+    expect(store.get('github-grant:octocat')!.options?.expirationTtl).toBeGreaterThan(15897600 - 5);
+  });
+
+  it('leaves a grant whose refresh expiry is far away untouched', async () => {
+    await seedGrant('octocat');
+    const before = store.get('github-grant:octocat')!.value;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('keep-alive must not fetch for a healthy grant');
+      }),
+    );
+    const summary = await keepAliveGrants(kv, KEY, OAUTH);
+    expect(summary.rotated).toBe(0);
+    expect(store.get('github-grant:octocat')!.value).toBe(before);
+  });
+
+  it('leaves non-expiring grants untouched', async () => {
+    await seedGrant('octocat', {
+      refreshToken: null,
+      accessExpiresAt: null,
+      refreshExpiresAt: null,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('keep-alive must not fetch for a non-expiring grant');
+      }),
+    );
+    const summary = await keepAliveGrants(kv, KEY, OAUTH);
+    expect(summary.rotated).toBe(0);
+    expect(await new GitHubGrantStore(kv, KEY).load('octocat')).not.toBeNull();
+  });
+
+  it('removes a grant whose refresh is rejected', async () => {
+    await seedGrant('octocat', { refreshExpiresAt: Date.now() + 30 * 86400_000 });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new RefreshTokenRejectedError('bad_refresh_token');
+      }),
+    );
+    const summary = await keepAliveGrants(kv, KEY, OAUTH);
+    expect(summary.removed).toBe(1);
+    expect(await new GitHubGrantStore(kv, KEY).load('octocat')).toBeNull();
+  });
+
+  it('keeps a grant on transient failure and reports it', async () => {
+    await seedGrant('octocat', { refreshExpiresAt: Date.now() + 30 * 86400_000 });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network');
+      }),
+    );
+    const summary = await keepAliveGrants(kv, KEY, OAUTH);
+    expect(summary.failed).toBe(1);
+    expect((await new GitHubGrantStore(kv, KEY).load('octocat'))?.accessToken).toBe('gho_dummy-a');
+  });
+
+  it('walks every grant key', async () => {
+    await seedGrant('octocat', { refreshExpiresAt: Date.now() + 30 * 86400_000 });
+    await seedGrant('other');
+    const otherBefore = store.get('github-grant:other')!.value;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(rotatedResponse()));
+    const summary = await keepAliveGrants(kv, KEY, OAUTH);
+    expect(summary.rotated).toBe(1);
+    expect(store.get('github-grant:other')!.value).toBe(otherBefore);
   });
 });

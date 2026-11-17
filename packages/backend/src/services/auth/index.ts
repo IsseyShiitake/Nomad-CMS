@@ -9,7 +9,12 @@ export { SESSION_TTL_SECONDS, SessionManager } from './session';
 export type { SessionRecord } from './session';
 export { exchangeCodeForToken, refreshGitHubToken, RefreshTokenRejectedError } from './oauth';
 export type { GitHubTokenPair } from './oauth';
-export { GitHubGrantStore, TOKEN_REFRESH_MARGIN_MS } from './githubGrant';
+export {
+  GitHubGrantStore,
+  TOKEN_REFRESH_MARGIN_MS,
+  GRANT_KEEP_ALIVE_THRESHOLD_MS,
+  keepAliveGrants,
+} from './githubGrant';
 export type { GitHubOAuthConfig } from './githubGrant';
 export { isOperatorLogin } from './operator';
 export { resolveEncryptionKey } from './crypto';
