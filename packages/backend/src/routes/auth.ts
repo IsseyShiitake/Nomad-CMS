@@ -358,12 +358,13 @@ export const authRoutes = {
       void ctx.env.SESSION_KV.delete(`oauth-state:${state}`);
 
       try {
-        const githubToken = await exchangeCodeForToken(
+        const pair = await exchangeCodeForToken(
           ctx.env.GITHUB_CLIENT_ID,
           ctx.env.GITHUB_CLIENT_SECRET,
           code,
           ctx.env.GITHUB_REDIRECT_URI,
         );
+        const githubToken = pair.accessToken;
 
         const client = new GitHubClient(githubToken);
         const user = await client.getUser();
