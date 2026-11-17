@@ -60,6 +60,47 @@ backend exchanges it with the client secret.
    - **Authorization callback URL:** `http://localhost:5173/auth/callback`
 2. Set the values on the backend only: `GITHUB_CLIENT_ID` and `GITHUB_REDIRECT_URI` (the localhost callback) in `packages/backend/wrangler.toml` `[vars]`, and `GITHUB_CLIENT_SECRET` in `packages/backend/.dev.vars` (gitignored).
 
+### Expiring tokens and automatic refresh
+
+OAuth Apps created on or after 2026-08-14 default to expiring tokens: an
+8-hour access token paired with a 6-month refresh token (see the
+[OAuth app token refresh changelog](https://github.blog/changelog/2026-08-14-multiple-redirect-uris-and-token-refresh-for-oauth-apps/)
+and [Authorizing OAuth apps § Expiring access tokens](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps)).
+Without handling, the 8-hour expiry would end every admin session and every
+client access backed by that login mid-day.
+
+The CMS handles this transparently. At each admin sign-in it stores one
+encrypted rotating grant per admin login (`github-grant:<login>` in KV,
+AES-GCM with the same key as sessions). Sessions and client access records
+cache only the access token and its expiry; every refresh goes through that
+single grant, because GitHub refresh tokens are single-use rotating and
+copies in multiple records would desync on the first rotation. The session
+layer refreshes near-expiry tokens on every authenticated request (within
+the last 5 minutes), and client sign-in refreshes through the record's
+creating admin in the same way. A transient GitHub outage during the margin
+keeps serving the still-valid cached token; only a hard expiry with no
+refresh possible ends the session.
+
+The first admin sign-in after upgrading re-anchors every client access that
+admin created, copying the current access token (and its expiry) into each
+record. Legacy accesses are revived this way with no password changes and no
+recreation, preserving each record's password hash, approval mode, and
+other settings.
+
+The CMS supports both token modes. To opt out of expiring tokens, go to
+GitHub → Developer settings → OAuth Apps → your app → Optional Features →
+expiring tokens, and disable them there. The tradeoff is long-lived tokens
+that never expire and therefore never need refresh — the CMS stores them
+with no refresh token and never attempts a refresh, while re-anchoring
+still copies the long-lived token. The default (expiring) mode is
+recommended for new apps.
+
+If a refresh chain dies — six months without use, or the grant is revoked —
+the admin must sign in again to create a fresh grant. Until then, client
+sign-in for accesses backed by that grant shows the "ask the administrator"
+banner instead of a generic invalid-credentials message, because the
+password was correct; only the GitHub connection behind the access is dead.
+
 ---
 
 ## Option 2: GitHub App (advanced / future)
