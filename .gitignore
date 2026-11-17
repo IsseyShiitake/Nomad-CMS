@@ -27,6 +27,7 @@ packages/backend/.dev.vars
 .mimosa/
 .v2c/
 .video_agent/
+.plan-workspace/
 
 # Project-memory / handoff documents (excluded from the public repo per
 # implements.md D4 — they carry the operator's deployment details)
